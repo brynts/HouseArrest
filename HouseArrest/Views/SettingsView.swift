@@ -28,7 +28,7 @@ struct SettingsView: View {
                     NavigationLink {
                         LogsView()
                     } label: {
-                        Label("Logs", systemImage: "terminal.fill")
+                        accentLabel("Logs", "terminal.fill")
                     }
                     Button {
                         appModel.copyLogs()
@@ -37,8 +37,9 @@ struct SettingsView: View {
                             copied = false
                         }
                     } label: {
-                        Label(copied ? "Copied" : "Copy logs", systemImage: "doc.on.doc")
+                        accentLabel(copied ? "Copied" : "Copy logs", "doc.on.doc")
                     }
+                    .buttonStyle(.plain)
                     .disabled(appModel.logLines.isEmpty)
                 }
 
@@ -48,7 +49,19 @@ struct SettingsView: View {
                 }
             }
             .tint(HATheme.accent)
+            .listItemTint(HATheme.accent)
             .navigationTitle("Settings")
+        }
+        .tint(HATheme.accent)
+    }
+
+    private func accentLabel(_ title: String, _ icon: String) -> some View {
+        Label {
+            Text(title).foregroundStyle(HATheme.accent)
+        } icon: {
+            Image(systemName: icon)
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(HATheme.accent)
         }
     }
 }
