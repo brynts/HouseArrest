@@ -33,7 +33,7 @@ struct AppsView: View {
                     ContentUnavailableView(
                         "No third-party apps",
                         systemImage: "square.grid.2x2",
-                        description: Text("Pull to refresh after granting container access.")
+                        description: Text("Pull to refresh.")
                     )
                 } else {
                     List(filtered) { app in
@@ -122,13 +122,16 @@ struct AppsView: View {
         isLoading = true
         errorText = nil
         DispatchQueue.global(qos: .userInitiated).async {
+            let catalogCount = HAInstalledAppCatalog().count
             let list = AppDiscoveryService.discover(thirdPartyOnly: true, measureSize: measure)
             DispatchQueue.main.async {
                 apps = list
                 isLoading = false
-                appModel.log("apps scan: \(list.count) third-party (measureSize=\(measure))")
+                appModel.log("apps scan: catalog=\(catalogCount) third-party=\(list.count)")
                 if list.isEmpty {
-                    errorText = "MCM returned no third-party containers. Bundle ID must be MobileHouseArrest."
+                    errorText = catalogCount == 0
+                        ? "LaunchServices returned no apps."
+                        : "Catalog had \(catalogCount) apps, none were third-party."
                 }
             }
         }
@@ -177,43 +180,31 @@ struct AppDetailView: View {
             }
 
             Section("Actions") {
-                Button {
-                    stub("Backup")
-                } label: {
+                Button { stub("Backup") } label: {
                     Label("Backup", systemImage: "externaldrive.badge.timemachine")
                 }
-                Button {
-                    stub("Browse files")
-                } label: {
+                Button { stub("Browse files") } label: {
                     Label("Browse files", systemImage: "folder")
                 }
-                Button {
-                    stub("Patch")
-                } label: {
+                Button { stub("Patch") } label: {
                     Label("Patch", systemImage: "wrench.and.screwdriver")
                 }
             }
 
             Section {
-                Button {
-                    stub("Clean Caches")
-                } label: {
+                Button { stub("Clean Caches") } label: {
                     Label("Clean Caches", systemImage: "trash")
                 }
-                Button {
-                    stub("Clean tmp")
-                } label: {
+                Button { stub("Clean tmp") } label: {
                     Label("Clean tmp", systemImage: "trash")
                 }
-                Button(role: .destructive) {
-                    stub("Reset app data")
-                } label: {
+                Button(role: .destructive) { stub("Reset app data") } label: {
                     Label("Reset app data", systemImage: "arrow.counterclockwise")
                 }
             } header: {
                 Text("Clean")
             } footer: {
-                Text("Scaffold only — Backup / Browse / Patch / Clean will be wired next. Data size is approximate when measured.")
+                Text("Backup / Browse / Patch / Clean will be wired next.")
             }
         }
         .navigationTitle(app.displayName)

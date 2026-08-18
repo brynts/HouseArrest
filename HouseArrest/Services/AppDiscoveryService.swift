@@ -1,42 +1,39 @@
 import Foundation
 import UIKit
 
-/// On-device app list via MCM (no pairing / no LocalDevVPN).
 enum AppDiscoveryService {
-    /// MCM class 2 = application data containers.
-    private static let applicationClass: UInt64 = 2
-    private static let enumerateLimit: UInt = 2048
-
-    /// Lists identifiers then resolves paths; filters system Apple apps when `thirdPartyOnly`.
     static func discover(thirdPartyOnly: Bool = true, measureSize: Bool = false) -> [InstalledApp] {
-        var enumError: NSString?
-        let identifiers = MCMEnumerateIdentifiersForClass(applicationClass, enumerateLimit, &enumError) ?? []
-
+        let catalog = HAInstalledAppCatalog()
         var apps: [InstalledApp] = []
-        apps.reserveCapacity(identifiers.count)
+        apps.reserveCapacity(catalog.count)
 
-        for raw in identifiers {
-            let bundleID = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !bundleID.isEmpty else { continue }
+        for (bundleID, info) in catalog {
             if thirdPartyOnly && isSystemBundle(bundleID) { continue }
 
-            var pathError: NSString?
-            let path = MCMActivateContainerPath(applicationClass, bundleID, false, &pathError)
-            let root = path.flatMap { PathSafety.isAppDataRoot(URL(fileURLWithPath: $0)) ? $0 : nil }
-
-            var size: Int64 = 0
-            if measureSize, let root {
-                size = directorySize(at: root)
+            let name = (info["name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                ?? bundleID.split(separator: ".").last.map(String.init)
+                ?? bundleID
+            var path = info["container"] as? String
+            if path == nil || path?.isEmpty == true {
+                var err: NSString?
+                path = MCMActivateContainerPath(2, bundleID, false, &err)
+            }
+            if let p = path, !PathSafety.isAppDataRoot(URL(fileURLWithPath: p)) {
+                path = nil
             }
 
-            let name = displayName(for: bundleID, containerPath: root)
+            var size: Int64 = 0
+            if measureSize, let path {
+                size = directorySize(at: path)
+            }
+
             apps.append(
                 InstalledApp(
                     bundleID: bundleID,
                     displayName: name,
-                    dataContainerPath: root,
+                    dataContainerPath: path,
                     dataSizeBytes: size,
-                    icon: nil
+                    icon: HAIconForBundleID(bundleID)
                 )
             )
         }
@@ -48,25 +45,8 @@ enum AppDiscoveryService {
 
     static func isSystemBundle(_ id: String) -> Bool {
         id.hasPrefix("com.apple.")
-            || id.hasPrefix("com.apple")
             || id.hasPrefix("systemgroup.")
             || id == "com.apple.mobile.MobileHouseArrest"
-    }
-
-    private static func displayName(for bundleID: String, containerPath: String?) -> String {
-        if let containerPath {
-            let meta = (containerPath as NSString)
-                .appendingPathComponent(".com.apple.mobile_container_manager.metadata.plist")
-            if let data = try? Data(contentsOf: URL(fileURLWithPath: meta)),
-               let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] {
-                if let info = plist["MCMMetadataInfo"] as? [String: Any] {
-                    if let dn = info["CFBundleDisplayName"] as? String, !dn.isEmpty { return dn }
-                    if let n = info["CFBundleName"] as? String, !n.isEmpty { return n }
-                }
-            }
-        }
-        // Fallback: last reverse-DNS component
-        return bundleID.split(separator: ".").last.map(String.init) ?? bundleID
     }
 
     private static func directorySize(at path: String) -> Int64 {
@@ -77,7 +57,6 @@ enum AppDiscoveryService {
             includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
             options: [.skipsHiddenFiles]
         ) else { return 0 }
-
         for case let fileURL as URL in enumerator {
             guard let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
                   values.isRegularFile == true,
