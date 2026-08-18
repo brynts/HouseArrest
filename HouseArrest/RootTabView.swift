@@ -11,6 +11,9 @@ struct RootTabView: View {
             Tab("Apps", systemImage: "square.grid.2x2.fill", value: AppTab.apps) {
                 AppsView()
             }
+            Tab("Settings", systemImage: "gearshape.fill", value: AppTab.settings) {
+                SettingsView()
+            }
         }
         .tint(HATheme.accent)
     }
@@ -19,4 +22,5 @@ struct RootTabView: View {
 enum AppTab: Hashable {
     case home
     case apps
+    case settings
 }

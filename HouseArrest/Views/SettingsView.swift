@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var appModel: AppModel
-    @Environment(\.dismiss) private var dismiss
     @AppStorage("ha.appearance") private var appearanceRaw = HAAppearance.system.rawValue
     @State private var copied = false
 
@@ -46,11 +45,6 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                }
-            }
         }
     }
 }
