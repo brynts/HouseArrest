@@ -63,7 +63,7 @@ struct AppsView: View {
                     }
                 }
             }
-            .background(Color.black)
+            .background(Color(.systemBackground))
             .navigationTitle("Apps")
             .navigationDestination(for: String.self) { bundleID in
                 if let app = apps.first(where: { $0.bundleID == bundleID }) {
@@ -204,14 +204,11 @@ struct AppDetailView: View {
             }
 
             Section("Actions") {
-                Button { stub("Backup") } label: {
-                    Label("Backup", systemImage: "externaldrive.badge.timemachine")
-                }
-                .disabled(busy)
-                Button { stub("Browse files") } label: {
+                NavigationLink {
+                    ContainerBrowserView(app: app)
+                } label: {
                     Label("Browse files", systemImage: "folder")
                 }
-                .disabled(busy)
                 Button(action: pickPatch) {
                     Label(busy ? "Applying…" : "Patch", systemImage: "wrench.and.screwdriver")
                 }
@@ -393,10 +390,5 @@ struct AppDetailView: View {
                 measuring = false
             }
         }
-    }
-
-    private func stub(_ action: String) {
-        message = "\(action) for \(app.bundleID) — coming next."
-        appModel.log("apps action stub: \(action) → \(app.bundleID)")
     }
 }
