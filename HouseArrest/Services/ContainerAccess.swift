@@ -11,7 +11,7 @@ struct AccessToken {
     let release: () -> Void
 }
 
-/// Real MobileHouseArrest path: MCM activate + bad_query grant.
+/// MCM activate + bad_query grant (original: forcequitOS/bad_query).
 final class MHAContainerAccess: ContainerAccessing {
     private static let appGroupMCMClass: UInt64 = 7
 
@@ -31,10 +31,11 @@ final class MHAContainerAccess: ContainerAccessing {
 
     func grant(root: URL, targetID: String) throws -> AccessToken {
         let id = try PathSafety.validateTargetID(targetID)
-        var pathC = root.path.utf8CString.map { Int8(bitPattern: $0) }
+        // Same pattern as 3105 ContainerStore.grantContainerAccess
+        var pathC = Array(root.path.utf8CString)
         let handle: Int64
         if id.hasPrefix("group.") {
-            var groupC = id.utf8CString.map { Int8(bitPattern: $0) }
+            var groupC = Array(id.utf8CString)
             handle = bad_query(&pathC, true, &groupC, true)
         } else {
             handle = bad_query(&pathC, true, nil, false)
