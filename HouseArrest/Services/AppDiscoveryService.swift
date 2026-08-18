@@ -29,9 +29,11 @@ enum AppDiscoveryService {
         progress: ((String, Int, Int) -> Void)? = nil
     ) -> [InstalledApp] {
         if !cachedApps.isEmpty {
+            HALog.write("refresh start cached=\(cachedApps.count)")
             return refreshCached(thirdPartyOnly: thirdPartyOnly, progress: progress)
         }
 
+        HALog.write("first scan")
         lastProbe = ""
         var byID: [String: InstalledApp] = [:]
         progress?("Finding apps", 0, 0)
@@ -42,17 +44,20 @@ enum AppDiscoveryService {
             for bundleID in LaunchServicesStore.identifiers() {
                 addIfNeeded(bundleID, into: &byID, thirdPartyOnly: thirdPartyOnly)
             }
+        } else {
+            _ = LaunchServicesStore.identifiers()
         }
 
         let result = enrich(byID, progress: progress).values.sorted {
             $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
         }
         cachedApps = result
+        HALog.write("first scan done apps=\(result.count)")
         return result
     }
 
     static func usage(for path: String) -> ContainerUsage {
-        _ = grant(path)
+        _ = GrantCache.grantOnce(path: path)
         let root = path as NSString
         return ContainerUsage(
             documents: directorySize(at: root.appendingPathComponent("Documents")),
@@ -73,10 +78,10 @@ enum AppDiscoveryService {
     ) -> [InstalledApp] {
         progress?("Checking for new apps", 0, 0)
         var byID = Dictionary(uniqueKeysWithValues: cachedApps.map { ($0.bundleID, $0) })
-        let known = Set(byID.keys)
         var added: [String: InstalledApp] = [:]
-        for bundleID in LaunchServicesStore.identifiersIfReadable() {
-            if known.contains(bundleID) { continue }
+        let fresh = LaunchServicesStore.newIdentifiers()
+        HALog.write("refresh new ids=\(fresh.count)")
+        for bundleID in fresh {
             guard addIfNeeded(bundleID, into: &byID, thirdPartyOnly: thirdPartyOnly) else { continue }
             if let app = byID[bundleID] { added[bundleID] = app }
         }
@@ -89,6 +94,7 @@ enum AppDiscoveryService {
         }
         cachedApps = result
         lastProbe = "refresh added=\(added.count) total=\(result.count)\n" + LaunchServicesStore.lastProbe
+        HALog.write("refresh done added=\(added.count) total=\(result.count)")
         return result
     }
 
@@ -228,14 +234,6 @@ enum AppDiscoveryService {
     private static func usableIcon(_ image: UIImage?) -> UIImage? {
         guard let image, image.size.width >= 16, image.size.height >= 16 else { return nil }
         return image
-    }
-
-    @discardableResult
-    private static func grant(_ path: String) -> Int64 {
-        var pathC = Array(path.utf8CString)
-        let handle = bad_query(&pathC, true, nil, false)
-        if handle >= 0 { bad_query_release(handle) }
-        return handle
     }
 
     private static func lastComponent(_ bundleID: String) -> String {
