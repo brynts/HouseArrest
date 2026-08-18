@@ -29,9 +29,7 @@ enum AppDiscoveryService {
         progress: ((String, Int, Int) -> Void)? = nil
     ) -> [InstalledApp] {
         if !cachedApps.isEmpty {
-            lastProbe = "catalog cached apps=\(cachedApps.count)"
-            progress?("Using cached apps", cachedApps.count, cachedApps.count)
-            return cachedApps
+            return refreshCached(thirdPartyOnly: thirdPartyOnly, progress: progress)
         }
 
         lastProbe = ""
@@ -42,16 +40,7 @@ enum AppDiscoveryService {
 
         if byID.isEmpty {
             for bundleID in LaunchServicesStore.identifiers() {
-                if thirdPartyOnly && isSystemBundle(bundleID) { continue }
-                var err: NSString?
-                guard let path = MCMActivateContainerPath(2, bundleID, false, &err),
-                      PathSafety.isAppDataRoot(URL(fileURLWithPath: path))
-                else { continue }
-                byID[bundleID] = InstalledApp(
-                    bundleID: bundleID,
-                    displayName: lastComponent(bundleID),
-                    dataContainerPath: path
-                )
+                addIfNeeded(bundleID, into: &byID, thirdPartyOnly: thirdPartyOnly)
             }
         }
 
@@ -76,6 +65,51 @@ enum AppDiscoveryService {
         id.hasPrefix("com.apple.")
             || id.hasPrefix("systemgroup.")
             || id == "com.apple.mobile.MobileHouseArrest"
+    }
+
+    private static func refreshCached(
+        thirdPartyOnly: Bool,
+        progress: ((String, Int, Int) -> Void)?
+    ) -> [InstalledApp] {
+        progress?("Checking for new apps", 0, 0)
+        var byID = Dictionary(uniqueKeysWithValues: cachedApps.map { ($0.bundleID, $0) })
+        let known = Set(byID.keys)
+        var added: [String: InstalledApp] = [:]
+        for bundleID in LaunchServicesStore.identifiersIfReadable() {
+            if known.contains(bundleID) { continue }
+            guard addIfNeeded(bundleID, into: &byID, thirdPartyOnly: thirdPartyOnly) else { continue }
+            if let app = byID[bundleID] { added[bundleID] = app }
+        }
+        if !added.isEmpty {
+            let extra = enrich(added, progress: progress)
+            for (id, app) in extra { byID[id] = app }
+        }
+        let result = byID.values.sorted {
+            $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+        }
+        cachedApps = result
+        lastProbe = "refresh added=\(added.count) total=\(result.count)\n" + LaunchServicesStore.lastProbe
+        return result
+    }
+
+    @discardableResult
+    private static func addIfNeeded(
+        _ bundleID: String,
+        into byID: inout [String: InstalledApp],
+        thirdPartyOnly: Bool
+    ) -> Bool {
+        if thirdPartyOnly && isSystemBundle(bundleID) { return false }
+        if byID[bundleID] != nil { return false }
+        var err: NSString?
+        guard let path = MCMActivateContainerPath(2, bundleID, false, &err),
+              PathSafety.isAppDataRoot(URL(fileURLWithPath: path))
+        else { return false }
+        byID[bundleID] = InstalledApp(
+            bundleID: bundleID,
+            displayName: lastComponent(bundleID),
+            dataContainerPath: path
+        )
+        return true
     }
 
     private static func merge(
