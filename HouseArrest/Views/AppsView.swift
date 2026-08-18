@@ -6,6 +6,7 @@ struct AppsView: View {
     @State private var isLoading = false
     @State private var search = ""
     @State private var errorText: String?
+    @State private var scanTitle = "Finding apps"
     @State private var scanCurrent = 0
     @State private var scanTotal = 0
 
@@ -22,9 +23,8 @@ struct AppsView: View {
         NavigationStack {
             Group {
                 if isLoading && apps.isEmpty {
-                    VStack(spacing: 12) {
-                        ProgressView()
-                        Text("Scanning apps")
+                    VStack(spacing: 8) {
+                        Text(scanTitle)
                             .font(.headline)
                         if scanTotal > 0 {
                             Text("\(scanCurrent)/\(scanTotal)")
@@ -113,11 +113,13 @@ struct AppsView: View {
     private func refresh() {
         isLoading = true
         errorText = nil
+        scanTitle = "Finding apps"
         scanCurrent = 0
         scanTotal = 0
         DispatchQueue.global(qos: .userInitiated).async {
-            let list = AppDiscoveryService.discover(thirdPartyOnly: true) { current, total in
+            let list = AppDiscoveryService.discover(thirdPartyOnly: true) { title, current, total in
                 DispatchQueue.main.async {
+                    scanTitle = title
                     scanCurrent = current
                     scanTotal = total
                 }
@@ -150,6 +152,7 @@ struct AppDetailView: View {
     @State private var measuring = false
     @State private var busy = false
     @State private var pending: PendingClean?
+    @State private var showImporter = false
 
     private struct PendingClean: Identifiable {
         let id = UUID()
@@ -203,7 +206,7 @@ struct AppDetailView: View {
                     Label("Browse files", systemImage: "folder")
                 }
                 .disabled(busy)
-                Button { stub("Patch") } label: {
+                Button { showImporter = true } label: {
                     Label("Patch", systemImage: "wrench.and.screwdriver")
                 }
                 .disabled(busy)
@@ -232,6 +235,16 @@ struct AppDetailView: View {
         .navigationTitle(app.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: loadUsage)
+        .sheet(isPresented: $showImporter) {
+            FileImporterRepresentableView(
+                allowedContentTypes: [.haPackage],
+                allowsMultipleSelection: false
+            ) { urls in
+                showImporter = false
+                handlePatch(urls)
+            }
+            .ignoresSafeArea()
+        }
         .alert("Apps", isPresented: Binding(
             get: { message != nil },
             set: { if !$0 { message = nil } }
@@ -280,6 +293,25 @@ struct AppDetailView: View {
             }
             .buttonStyle(.plain)
             .disabled(busy || app.dataContainerPath == nil)
+        }
+    }
+
+    private func handlePatch(_ urls: [URL]) {
+        guard let url = urls.first else { return }
+        do {
+            guard url.pathExtension.lowercased() == "ha" else {
+                throw PatchError.invalidPackage
+            }
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+            let project = try HAPackageCodec.decode(try Data(contentsOf: url))
+            appModel.addProject(project)
+            let receipt = try PatchApplyService.apply(project: project) { appModel.log($0) }
+            message = "Applied \(receipt.entries.count) file(s) from \(project.name)."
+            appModel.log("apply ok from apps tab project=\(project.name) files=\(receipt.entries.count)")
+        } catch {
+            message = error.localizedDescription
+            appModel.log("apply failed: \(error.localizedDescription)")
         }
     }
 
