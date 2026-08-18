@@ -130,6 +130,15 @@ struct AppDetailView: View {
     @State private var message: String?
     @State private var usage: ContainerUsage?
     @State private var measuring = false
+    @State private var busy = false
+    @State private var pending: PendingClean?
+
+    private struct PendingClean: Identifiable {
+        let id = UUID()
+        let title: String
+        let detail: String
+        let areas: [AppCleanService.Area]
+    }
 
     var body: some View {
         List {
@@ -171,29 +180,45 @@ struct AppDetailView: View {
                 Button { stub("Backup") } label: {
                     Label("Backup", systemImage: "externaldrive.badge.timemachine")
                 }
+                .disabled(busy)
                 Button { stub("Browse files") } label: {
                     Label("Browse files", systemImage: "folder")
                 }
+                .disabled(busy)
                 Button { stub("Patch") } label: {
                     Label("Patch", systemImage: "wrench.and.screwdriver")
                 }
+                .disabled(busy)
             }
 
             Section {
                 if measuring && usage == nil {
                     ProgressView()
                 } else {
-                    dataRow("Documents", usage?.documentsLabel) { stub("Clean Documents") }
-                    dataRow("Caches", usage?.cachesLabel) { stub("Clean Caches") }
-                    dataRow("tmp", usage?.tmpLabel) { stub("Clean tmp") }
+                    dataRow("Documents", usage?.documentsLabel) {
+                        askClean(.documents)
+                    }
+                    dataRow("Caches", usage?.cachesLabel) {
+                        askClean(.caches)
+                    }
+                    dataRow("tmp", usage?.tmpLabel) {
+                        askClean(.tmp)
+                    }
                 }
-                Button(role: .destructive) { stub("Reset app data") } label: {
+                Button(role: .destructive) {
+                    pending = PendingClean(
+                        title: "Reset app data?",
+                        detail: "Deletes Documents, Caches, and tmp for \(app.displayName). Preferences stay.",
+                        areas: [.documents, .caches, .tmp]
+                    )
+                } label: {
                     Label("Reset app data", systemImage: "arrow.counterclockwise")
                 }
+                .disabled(busy || app.dataContainerPath == nil)
             } header: {
                 Text("Data")
             } footer: {
-                Text("Backup / Browse / Patch / Clean will be wired next.")
+                Text(busy ? "Working…" : "Clean only empties Documents, Caches, and tmp.")
             }
         }
         .navigationTitle(app.displayName)
@@ -207,6 +232,21 @@ struct AppDetailView: View {
         } message: {
             Text(message ?? "")
         }
+        .confirmationDialog(
+            pending?.title ?? "Clean",
+            isPresented: Binding(
+                get: { pending != nil },
+                set: { if !$0 { pending = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Clean", role: .destructive) {
+                if let pending { runClean(pending.areas) }
+            }
+            Button("Cancel", role: .cancel) { pending = nil }
+        } message: {
+            Text(pending?.detail ?? "")
+        }
     }
 
     private func dataRow(_ title: String, _ size: String?, action: @escaping () -> Void) -> some View {
@@ -219,14 +259,55 @@ struct AppDetailView: View {
             }
             Spacer()
             Button(action: action) {
-                Text("Clean")
-                    .font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 6)
-                    .background(HATheme.accent.opacity(0.18), in: Capsule())
-                    .foregroundStyle(HATheme.accent)
+                if busy {
+                    ProgressView()
+                } else {
+                    Text("Clean")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        .background(HATheme.accent.opacity(0.18), in: Capsule())
+                        .foregroundStyle(HATheme.accent)
+                }
             }
             .buttonStyle(.plain)
+            .disabled(busy || app.dataContainerPath == nil)
+        }
+    }
+
+    private func askClean(_ area: AppCleanService.Area) {
+        pending = PendingClean(
+            title: "Clean \(area.title)?",
+            detail: "Deletes files in \(area.title) for \(app.displayName).",
+            areas: [area]
+        )
+    }
+
+    private func runClean(_ areas: [AppCleanService.Area]) {
+        busy = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let removed = try AppCleanService.clean(
+                    bundleID: app.bundleID,
+                    containerPath: app.dataContainerPath,
+                    areas: areas,
+                    log: { line in
+                        DispatchQueue.main.async { appModel.log(line) }
+                    }
+                )
+                let result = app.dataContainerPath.map { AppDiscoveryService.usage(for: $0) }
+                DispatchQueue.main.async {
+                    if let result { usage = result }
+                    busy = false
+                    message = "Removed \(removed) item\(removed == 1 ? "" : "s")."
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    busy = false
+                    message = error.localizedDescription
+                    appModel.log("clean failed \(app.bundleID): \(error.localizedDescription)")
+                }
+            }
         }
     }
 
