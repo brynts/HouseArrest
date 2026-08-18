@@ -23,6 +23,7 @@ struct ContainerUsage {
 enum AppDiscoveryService {
     static var lastProbe = ""
     private static var cachedApps: [InstalledApp] = []
+    private static var seenUUIDs = Set<String>()
     private static var itunesCache: [String: (name: String, icon: UIImage?)] = [:]
 
     static func discover(
@@ -51,7 +52,8 @@ enum AppDiscoveryService {
             $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
         }
         cachedApps = result
-        HALog.write("first scan done apps=\(result.count)")
+        seedSeenContainers()
+        HALog.write("first scan done apps=\(result.count) seen=\(seenUUIDs.count)")
         return result
     }
 
@@ -88,20 +90,26 @@ enum AppDiscoveryService {
             }
         }
 
-        let knownPaths = Set(byID.values.compactMap { $0.dataContainerPath.map(normalizePath) })
         let folders = listApplicationContainers()
-        HALog.write("refresh folders=\(folders.count) known=\(knownPaths.count)")
+        if seenUUIDs.isEmpty {
+            seenUUIDs = Set(folders.map(containerUUID))
+            HALog.write("refresh seed seen=\(seenUUIDs.count)")
+        }
+        let newFolders = folders.filter { !seenUUIDs.contains(containerUUID($0)) }
+        seenUUIDs.formUnion(folders.map(containerUUID))
+        HALog.write("refresh folders=\(folders.count) new=\(newFolders.count)")
 
         var added: [String: InstalledApp] = [:]
-        for folder in folders {
-            let normalized = normalizePath(folder)
-            if knownPaths.contains(normalized) { continue }
+        for folder in newFolders {
             _ = GrantCache.grantOnce(path: folder)
             guard let bundleID = bundleID(fromContainer: folder) else {
-                HALog.write("refresh skip no-id \((folder as NSString).lastPathComponent)")
+                HALog.write("refresh skip no-id \(containerUUID(folder))")
                 continue
             }
-            if thirdPartyOnly && isSystemBundle(bundleID) { continue }
+            if thirdPartyOnly && isSystemBundle(bundleID) {
+                HALog.write("refresh skip system \(bundleID)")
+                continue
+            }
             if byID[bundleID] != nil { continue }
             byID[bundleID] = InstalledApp(
                 bundleID: bundleID,
@@ -120,7 +128,7 @@ enum AppDiscoveryService {
             $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
         }
         cachedApps = result
-        lastProbe = "refresh added=\(added.count) dropped=\(dropped) folders=\(folders.count) total=\(result.count)"
+        lastProbe = "refresh added=\(added.count) dropped=\(dropped) newFolders=\(newFolders.count) total=\(result.count)"
         HALog.write("refresh done added=\(added.count) dropped=\(dropped) total=\(result.count)")
         return result
     }
@@ -170,31 +178,45 @@ enum AppDiscoveryService {
         }
     }
 
+    private static func seedSeenContainers() {
+        let folders = listApplicationContainers()
+        seenUUIDs = Set(folders.map(containerUUID))
+        HALog.write("seed containers=\(seenUUIDs.count)")
+    }
+
     private static func listApplicationContainers() -> [String] {
-        let parents = [
-            "/private/var/mobile/Containers/Data/Application",
-            "/var/mobile/Containers/Data/Application"
-        ]
         var seen = Set<String>()
         var result: [String] = []
-        for parent in parents {
-            _ = GrantCache.grantOnce(path: parent)
-            var names = (try? FileManager.default.contentsOfDirectory(atPath: parent)) ?? []
-            if names.isEmpty {
-                var pathC = Array(parent.utf8CString)
-                if let listed = bad_query_list(&pathC, 400000) {
-                    let blob = String(cString: listed)
-                    free(listed)
-                    names = blob.split(whereSeparator: \.isNewline).map { line in
-                        URL(fileURLWithPath: String(line)).lastPathComponent
-                    }
-                }
-            }
+
+        func addNames(_ names: [String], parent: String) {
             for name in names where isUUID(name) {
                 let path = normalizePath((parent as NSString).appendingPathComponent(name))
                 if seen.insert(path).inserted {
                     result.append(path)
                 }
+            }
+        }
+
+        if let known = cachedApps.compactMap(\.dataContainerPath).first {
+            _ = GrantCache.grantOnce(path: known)
+            let parent = URL(fileURLWithPath: known).deletingLastPathComponent().path
+            if let names = try? FileManager.default.contentsOfDirectory(atPath: parent), !names.isEmpty {
+                addNames(names, parent: parent)
+                HALog.write("refresh list via child parent=\(names.count)")
+            }
+        }
+
+        if result.isEmpty {
+            let parent = "/private/var/mobile/Containers/Data/Application"
+            var pathC = Array(parent.utf8CString)
+            if let listed = bad_query_list(&pathC, 2_000_000) {
+                let blob = String(cString: listed)
+                free(listed)
+                let names = blob.split(whereSeparator: \.isNewline).map { line in
+                    URL(fileURLWithPath: String(line)).lastPathComponent
+                }
+                addNames(names, parent: parent)
+                HALog.write("refresh list via bad_query=\(names.count)")
             }
         }
         return result
@@ -210,6 +232,10 @@ enum AppDiscoveryService {
             if let id = info["MCMApplicationIdentifier"] as? String, id.contains(".") { return id }
         }
         return nil
+    }
+
+    private static func containerUUID(_ path: String) -> String {
+        URL(fileURLWithPath: path).lastPathComponent
     }
 
     private static func isUUID(_ name: String) -> Bool {
