@@ -9,6 +9,11 @@ struct RootTabView: View {
                 .tabItem { Label("Home", systemImage: "house.fill") }
                 .tag(AppTab.home)
 
+            AppsView()
+                .tabItem { Label("Apps", systemImage: "square.grid.2x2.fill") }
+                .tag(AppTab.apps)
+
+            // Keep Patches reachable while Apps detail Patch action is scaffolded.
             PatchesView()
                 .tabItem { Label("Patches", systemImage: "shippingbox.fill") }
                 .tag(AppTab.patches)
@@ -19,5 +24,6 @@ struct RootTabView: View {
 
 enum AppTab: Hashable {
     case home
+    case apps
     case patches
 }

@@ -25,6 +25,11 @@
 		A10000000000000000000011 /* UTType+HA.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000011 /* UTType+HA.swift */; };
 		A10000000000000000000012 /* bad_query.c in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000012 /* bad_query.c */; };
 		A10000000000000000000013 /* mcm_bridge.m in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000013 /* mcm_bridge.m */; };
+		A10000000000000000000017 /* InstalledApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* InstalledApp.swift */; };
+		A10000000000000000000018 /* AppDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000018 /* AppDiscoveryService.swift */; };
+		A10000000000000000000019 /* AppsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000019 /* AppsView.swift */; };
+		A1000000000000000000001A /* AppCatalog.m in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001A /* AppCatalog.m */; };
+		A1000000000000000000001C /* LaunchServicesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001C /* LaunchServicesStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -51,6 +56,12 @@
 		B10000000000000000000014 /* bad_query.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bad_query.h; sourceTree = "<group>"; };
 		B10000000000000000000015 /* mcm_bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = mcm_bridge.h; sourceTree = "<group>"; };
 		B10000000000000000000016 /* Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Bridging-Header.h"; sourceTree = "<group>"; };
+		B10000000000000000000017 /* InstalledApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstalledApp.swift; sourceTree = "<group>"; };
+		B10000000000000000000018 /* AppDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDiscoveryService.swift; sourceTree = "<group>"; };
+		B10000000000000000000019 /* AppsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppsView.swift; sourceTree = "<group>"; };
+		B1000000000000000000001A /* AppCatalog.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppCatalog.m; sourceTree = "<group>"; };
+		B1000000000000000000001B /* AppCatalog.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppCatalog.h; sourceTree = "<group>"; };
+		B1000000000000000000001C /* LaunchServicesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchServicesStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -103,6 +114,7 @@
 			children = (
 				B10000000000000000000004 /* AppModel.swift */,
 				B10000000000000000000005 /* PatchModels.swift */,
+				B10000000000000000000017 /* InstalledApp.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -114,6 +126,10 @@
 				B10000000000000000000007 /* ContainerAccess.swift */,
 				B10000000000000000000008 /* PatchApplyService.swift */,
 				B10000000000000000000009 /* HAPackageCodec.swift */,
+				B10000000000000000000018 /* AppDiscoveryService.swift */,
+				B1000000000000000000001C /* LaunchServicesStore.swift */,
+				B1000000000000000000001A /* AppCatalog.m */,
+				B1000000000000000000001B /* AppCatalog.h */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -122,6 +138,7 @@
 			isa = PBXGroup;
 			children = (
 				B1000000000000000000000A /* HomeView.swift */,
+				B10000000000000000000019 /* AppsView.swift */,
 				B1000000000000000000000B /* PatchesView.swift */,
 				B1000000000000000000000C /* LogsView.swift */,
 				B1000000000000000000000D /* SettingsView.swift */,
@@ -230,6 +247,11 @@
 				A10000000000000000000011 /* UTType+HA.swift in Sources */,
 				A10000000000000000000012 /* bad_query.c in Sources */,
 				A10000000000000000000013 /* mcm_bridge.m in Sources */,
+				A10000000000000000000017 /* InstalledApp.swift in Sources */,
+				A10000000000000000000018 /* AppDiscoveryService.swift in Sources */,
+				A10000000000000000000019 /* AppsView.swift in Sources */,
+				A1000000000000000000001A /* AppCatalog.m in Sources */,
+				A1000000000000000000001C /* LaunchServicesStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

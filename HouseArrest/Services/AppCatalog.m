@@ -1,0 +1,274 @@
+#import "AppCatalog.h"
+#import "bad_query.h"
+#import <objc/message.h>
+#import <objc/runtime.h>
+#import <dlfcn.h>
+
+static NSMutableString *gProbe;
+
+static void probeReset(void) {
+    gProbe = [NSMutableString string];
+}
+
+static void probe(NSString *fmt, ...) {
+    if (!gProbe) gProbe = [NSMutableString string];
+    va_list args;
+    va_start(args, fmt);
+    NSString *line = [[NSString alloc] initWithFormat:fmt arguments:args];
+    va_end(args);
+    [gProbe appendFormat:@"%@\n", line];
+}
+
+NSString *HACatalogLastProbe(void) {
+    return gProbe.length ? [gProbe copy] : @"(no probe)";
+}
+
+static NSString *stringValue(id value) {
+    if ([value isKindOfClass:[NSString class]] && [value length] > 0) return value;
+    return nil;
+}
+
+static NSString *pathValue(id value) {
+    if ([value isKindOfClass:[NSURL class]]) return [(NSURL *)value path];
+    return stringValue(value);
+}
+
+static void addProxy(NSMutableDictionary *result, id app) {
+    NSString *bundleID = nil;
+    SEL bidSel = NSSelectorFromString(@"bundleIdentifier");
+    if ([app respondsToSelector:bidSel]) {
+        bundleID = stringValue(((id (*)(id, SEL))objc_msgSend)(app, bidSel));
+    }
+    if (!bundleID.length) return;
+
+    NSString *name = bundleID;
+    SEL nameSel = NSSelectorFromString(@"localizedName");
+    if ([app respondsToSelector:nameSel]) {
+        NSString *localized = stringValue(((id (*)(id, SEL))objc_msgSend)(app, nameSel));
+        if (localized.length) name = localized;
+    }
+
+    NSString *container = nil;
+    for (NSString *selName in @[ @"dataContainerURL", @"containerURL" ]) {
+        SEL sel = NSSelectorFromString(selName);
+        if (![app respondsToSelector:sel]) continue;
+        container = pathValue(((id (*)(id, SEL))objc_msgSend)(app, sel));
+        if (container.length) break;
+    }
+
+    NSMutableDictionary *entry = [NSMutableDictionary dictionary];
+    entry[@"name"] = name;
+    if (container.length) entry[@"container"] = container;
+    result[bundleID] = entry;
+}
+
+static NSDictionary *appsFromWorkspace(void) {
+    NSMutableDictionary *result = [NSMutableDictionary dictionary];
+    Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
+    probe(@"LSApplicationWorkspace class=%@", workspaceClass ? NSStringFromClass(workspaceClass) : @"nil");
+    SEL defaultSel = NSSelectorFromString(@"defaultWorkspace");
+    if (!workspaceClass || ![workspaceClass respondsToSelector:defaultSel]) return result;
+    id workspace = ((id (*)(id, SEL))objc_msgSend)(workspaceClass, defaultSel);
+    probe(@"defaultWorkspace=%@", workspace ?: @"nil");
+    if (!workspace) return result;
+
+    for (NSString *selName in @[ @"allInstalledApplications", @"allApplications", @"installedApplications" ]) {
+        SEL sel = NSSelectorFromString(selName);
+        if (![workspace respondsToSelector:sel]) {
+            probe(@"LS %@ responds=NO", selName);
+            continue;
+        }
+        id candidate = ((id (*)(id, SEL))objc_msgSend)(workspace, sel);
+        NSUInteger count = [candidate isKindOfClass:[NSArray class]] ? [candidate count] : 0;
+        probe(@"LS %@ class=%@ count=%lu", selName, NSStringFromClass([candidate class]) ?: @"nil", (unsigned long)count);
+        if (count == 0) continue;
+        for (id app in candidate) addProxy(result, app);
+        if (result.count) return result;
+    }
+    return result;
+}
+
+static NSDictionary *appsFromMobileInstallation(void) {
+    NSMutableDictionary *result = [NSMutableDictionary dictionary];
+    void *handle = dlopen(
+        "/System/Library/PrivateFrameworks/MobileInstallation.framework/MobileInstallation",
+        RTLD_LAZY | RTLD_LOCAL
+    );
+    void *lookup = dlsym(RTLD_DEFAULT, "MobileInstallationLookup");
+    if (!lookup && handle) lookup = dlsym(handle, "MobileInstallationLookup");
+    probe(@"MobileInstallationLookup=%p handle=%p", lookup, handle);
+    return result;
+}
+
+static BOOL isUUIDFolder(NSString *name) {
+    if (name.length != 36) return NO;
+    return [name characterAtIndex:8] == '-' &&
+        [name characterAtIndex:13] == '-' &&
+        [name characterAtIndex:18] == '-' &&
+        [name characterAtIndex:23] == '-';
+}
+
+static int64_t grantPath(NSString *path) {
+    char buf[1024];
+    if (![path getCString:buf maxLength:sizeof(buf) encoding:NSUTF8StringEncoding]) return -255;
+    return bad_query(buf, true, NULL, false);
+}
+
+static NSDictionary *appsFromContainerWalk(void) {
+    NSMutableDictionary *result = [NSMutableDictionary dictionary];
+    char root[] = "/var/mobile/Containers/Data/Application";
+    char *listed = bad_query_list(root, 400000);
+    if (!listed) {
+        probe(@"bad_query_list returned NULL");
+        return result;
+    }
+
+    NSArray *lines = [[NSString stringWithUTF8String:listed] componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]];
+    free(listed);
+    probe(@"bad_query_list entries=%lu sample=%@",
+          (unsigned long)lines.count,
+          stringValue(lines.firstObject) ?: @"(empty)");
+
+    NSInteger sampled = 0;
+    for (NSString *raw in lines) {
+        if (sampled >= 4) break;
+        NSString *line = [raw stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (!line.length || !isUUIDFolder(line.lastPathComponent)) continue;
+        NSString *container = line;
+        if ([container hasPrefix:@"/var/"] && ![container hasPrefix:@"/private/"]) {
+            container = [@"/private" stringByAppendingString:container];
+        }
+        NSString *meta = [container stringByAppendingPathComponent:@".com.apple.mobile_container_manager.metadata.plist"];
+        int64_t metaGrant = grantPath(meta);
+        int64_t dirGrant = grantPath(container);
+        NSData *data = [NSData dataWithContentsOfFile:meta];
+        probe(@"sample[%ld] metaGrant=%lld dirGrant=%lld bytes=%lu",
+              (long)sampled, metaGrant, dirGrant, (unsigned long)data.length);
+        if (metaGrant >= 0) bad_query_release(metaGrant);
+        if (dirGrant >= 0) bad_query_release(dirGrant);
+        sampled++;
+    }
+    probe(@"container walk skipped full scan (use LS store + MCM)");
+    return result;
+}
+
+NSDictionary<NSString *, NSDictionary *> *HAInstalledAppCatalog(void) {
+    probeReset();
+    probe(@"host bundle=%@", NSBundle.mainBundle.bundleIdentifier ?: @"nil");
+    NSDictionary *workspace = appsFromWorkspace();
+    probe(@"workspace count=%lu", (unsigned long)workspace.count);
+    if (workspace.count > 0) return workspace;
+    NSDictionary *mi = appsFromMobileInstallation();
+    probe(@"mobileinstall count=%lu", (unsigned long)mi.count);
+    if (mi.count > 0) return mi;
+    return appsFromContainerWalk();
+}
+
+static id proxyForBundleID(NSString *bundleID) {
+    Class proxyClass = NSClassFromString(@"LSApplicationProxy");
+    SEL sel = NSSelectorFromString(@"applicationProxyForIdentifier:");
+    if (!proxyClass || ![proxyClass respondsToSelector:sel]) return nil;
+    return ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, sel, bundleID);
+}
+
+static NSData *iconDataFromProxy(id proxy) {
+    if (!proxy) return nil;
+    SEL iconSel = NSSelectorFromString(@"iconDataForVariant:");
+    if ([proxy respondsToSelector:iconSel]) {
+        const int variants[] = { 2, 0, 1, 3, 4, 5, 15, 17, 18 };
+        for (size_t i = 0; i < sizeof(variants) / sizeof(variants[0]); i++) {
+            id data = ((id (*)(id, SEL, int))objc_msgSend)(proxy, iconSel, variants[i]);
+            if ([data isKindOfClass:[NSData class]] && [data length] > 32) return data;
+        }
+    }
+    SEL primarySel = NSSelectorFromString(@"primaryIconData");
+    if ([proxy respondsToSelector:primarySel]) {
+        id data = ((id (*)(id, SEL))objc_msgSend)(proxy, primarySel);
+        if ([data isKindOfClass:[NSData class]] && [data length] > 32) return data;
+    }
+    return nil;
+}
+
+static UIImage *iconFromBundlePath(NSString *bundlePath) {
+    if (!bundlePath.length) return nil;
+    int64_t handle = grantPath(bundlePath);
+    NSBundle *bundle = [NSBundle bundleWithPath:bundlePath];
+    NSDictionary *info = bundle.infoDictionary;
+    NSMutableArray<NSString *> *names = [NSMutableArray array];
+    id icons = info[@"CFBundleIcons"][@"CFBundlePrimaryIcon"][@"CFBundleIconFiles"];
+    if ([icons isKindOfClass:[NSArray class]]) [names addObjectsFromArray:icons];
+    id legacy = info[@"CFBundleIconFiles"];
+    if ([legacy isKindOfClass:[NSArray class]]) [names addObjectsFromArray:legacy];
+    if (stringValue(info[@"CFBundleIconFile"])) [names addObject:info[@"CFBundleIconFile"]];
+    [names addObjectsFromArray:@[ @"AppIcon60x60@2x", @"AppIcon76x76@2x~ipad", @"AppIcon", @"Icon@2x", @"Icon" ]];
+
+    UIImage *image = nil;
+    for (NSString *name in names) {
+        NSString *base = [name stringByDeletingPathExtension];
+        for (NSString *file in @[ name, [base stringByAppendingString:@".png"], [base stringByAppendingString:@"@2x.png"] ]) {
+            NSString *path = [bundlePath stringByAppendingPathComponent:file];
+            image = [UIImage imageWithContentsOfFile:path];
+            if (image) break;
+        }
+        if (image) break;
+    }
+    if (handle >= 0) bad_query_release(handle);
+    return image;
+}
+
+static NSString *nameFromBundlePath(NSString *bundlePath) {
+    if (!bundlePath.length) return nil;
+    int64_t handle = grantPath(bundlePath);
+    NSBundle *bundle = [NSBundle bundleWithPath:bundlePath];
+    NSDictionary *localized = bundle.localizedInfoDictionary;
+    NSDictionary *info = bundle.infoDictionary;
+    NSString *name = stringValue(localized[@"CFBundleDisplayName"])
+        ?: stringValue(localized[@"CFBundleName"])
+        ?: stringValue(info[@"CFBundleDisplayName"])
+        ?: stringValue(info[@"CFBundleName"]);
+    if (handle >= 0) bad_query_release(handle);
+    return name;
+}
+
+NSDictionary *HAPresentationForBundleID(NSString *bundleID) {
+    NSMutableDictionary *result = [NSMutableDictionary dictionary];
+    if (bundleID.length == 0) return result;
+
+    id proxy = proxyForBundleID(bundleID);
+    NSURL *bundleURL = nil;
+    SEL urlSel = NSSelectorFromString(@"bundleURL");
+    if ([proxy respondsToSelector:urlSel]) {
+        id value = ((id (*)(id, SEL))objc_msgSend)(proxy, urlSel);
+        if ([value isKindOfClass:[NSURL class]]) bundleURL = value;
+    }
+
+    NSString *name = nameFromBundlePath(bundleURL.path);
+    if (!name.length) {
+        for (NSString *selName in @[ @"localizedName", @"localizedShortName" ]) {
+            SEL sel = NSSelectorFromString(selName);
+            if (![proxy respondsToSelector:sel]) continue;
+            name = stringValue(((id (*)(id, SEL))objc_msgSend)(proxy, sel));
+            if (name.length) break;
+        }
+    }
+    if (name.length) result[@"name"] = name;
+
+    UIImage *icon = nil;
+    NSData *data = iconDataFromProxy(proxy);
+    if (data) icon = [UIImage imageWithData:data];
+    if (!icon) icon = iconFromBundlePath(bundleURL.path);
+    if (icon) result[@"icon"] = icon;
+    return result;
+}
+
+UIImage *HAIconForBundleID(NSString *bundleID) {
+    if (bundleID.length == 0) return nil;
+    static NSCache *cache;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ cache = [NSCache new]; cache.countLimit = 256; });
+    UIImage *cached = [cache objectForKey:bundleID];
+    if (cached) return cached;
+    UIImage *image = HAPresentationForBundleID(bundleID)[@"icon"];
+    if (image) [cache setObject:image forKey:bundleID];
+    return image;
+}
