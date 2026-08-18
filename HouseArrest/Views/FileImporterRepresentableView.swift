@@ -1,7 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// UIKit document picker (same approach as Feather).
 struct FileImporterRepresentableView: UIViewControllerRepresentable {
     var allowedContentTypes: [UTType]
     var allowsMultipleSelection: Bool = false
@@ -18,6 +17,7 @@ struct FileImporterRepresentableView: UIViewControllerRepresentable {
         )
         picker.delegate = context.coordinator
         picker.allowsMultipleSelection = allowsMultipleSelection
+        picker.shouldShowFileExtensions = true
         return picker
     }
 
@@ -31,9 +31,24 @@ struct FileImporterRepresentableView: UIViewControllerRepresentable {
         }
 
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-            let picked = urls
+            var stable: [URL] = []
+            let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("HAImports", isDirectory: true)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            for url in urls {
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                let dest = folder.appendingPathComponent(url.lastPathComponent)
+                try? FileManager.default.removeItem(at: dest)
+                if (try? FileManager.default.copyItem(at: url, to: dest)) != nil {
+                    stable.append(dest)
+                } else if let data = try? Data(contentsOf: url) {
+                    try? data.write(to: dest)
+                    stable.append(dest)
+                }
+            }
             DispatchQueue.main.async {
-                self.onDocumentsPicked(picked)
+                self.onDocumentsPicked(stable)
             }
         }
 
