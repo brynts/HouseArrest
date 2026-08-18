@@ -43,7 +43,6 @@ struct SettingsView: View {
                 Section("About") {
                     LabeledContent("App", value: "HouseArrest")
                     LabeledContent("Focus", value: "Patch tool (app + App Group)")
-                    LabeledContent("Target", value: "iOS 26")
                 }
             }
             .navigationTitle("Settings")
