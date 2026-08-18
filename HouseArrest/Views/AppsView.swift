@@ -6,6 +6,8 @@ struct AppsView: View {
     @State private var isLoading = false
     @State private var search = ""
     @State private var errorText: String?
+    @State private var scanCurrent = 0
+    @State private var scanTotal = 0
 
     private var filtered: [InstalledApp] {
         let q = search.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -20,8 +22,17 @@ struct AppsView: View {
         NavigationStack {
             Group {
                 if isLoading && apps.isEmpty {
-                    ProgressView("Scanning apps…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Text("Scanning apps")
+                            .font(.headline)
+                        if scanTotal > 0 {
+                            Text("\(scanCurrent)/\(scanTotal)")
+                                .font(.title3.monospacedDigit())
+                                .foregroundStyle(HATheme.secondaryText)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let errorText, apps.isEmpty {
                     ContentUnavailableView(
                         "Could not list apps",
@@ -92,7 +103,7 @@ struct AppsView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(Color.secondary.opacity(0.25))
-                    .frame(width: 44, height: 64)
+                    .frame(width: 44, height: 44)
                 Image(systemName: "app.fill")
                     .foregroundStyle(HATheme.accent)
             }
@@ -102,8 +113,15 @@ struct AppsView: View {
     private func refresh() {
         isLoading = true
         errorText = nil
+        scanCurrent = 0
+        scanTotal = 0
         DispatchQueue.global(qos: .userInitiated).async {
-            let list = AppDiscoveryService.discover(thirdPartyOnly: true)
+            let list = AppDiscoveryService.discover(thirdPartyOnly: true) { current, total in
+                DispatchQueue.main.async {
+                    scanCurrent = current
+                    scanTotal = total
+                }
+            }
             let probe = [
                 HACatalogLastProbe(),
                 LaunchServicesStore.lastProbe,
@@ -138,8 +156,6 @@ struct AppDetailView: View {
         let title: String
         let detail: String
         let areas: [AppCleanService.Area]
-        let confirmTitle: String
-        let fullReset: Bool
     }
 
     var body: some View {
@@ -207,22 +223,10 @@ struct AppDetailView: View {
                         askClean(.tmp)
                     }
                 }
-                Button(role: .destructive) {
-                    pending = PendingClean(
-                        title: "Reset all data?",
-                        detail: "Wipes Documents, tmp, and all of Library (Preferences, Application Support, Cookies, WebKit, caches) for \(app.displayName). Same as a fresh install.",
-                        areas: [],
-                        confirmTitle: "Reset all",
-                        fullReset: true
-                    )
-                } label: {
-                    Label("Reset all", systemImage: "arrow.counterclockwise")
-                }
-                .disabled(busy || app.dataContainerPath == nil)
             } header: {
                 Text("Data")
             } footer: {
-                Text(busy ? "Working…" : "Clean: Documents, Caches, tmp. Reset all is a full fresh-install wipe.")
+                Text(busy ? "Working…" : "Clean empties Documents, Caches, or tmp.")
             }
         }
         .navigationTitle(app.displayName)
@@ -244,8 +248,8 @@ struct AppDetailView: View {
             ),
             titleVisibility: .visible
         ) {
-            Button(pending?.confirmTitle ?? "Clean", role: .destructive) {
-                if let pending { runClean(pending) }
+            Button("Clean", role: .destructive) {
+                if let pending { runClean(pending.areas) }
             }
             Button("Cancel", role: .cancel) { pending = nil }
         } message: {
@@ -283,35 +287,22 @@ struct AppDetailView: View {
         pending = PendingClean(
             title: "Clean \(area.title)?",
             detail: "Deletes files in \(area.title) for \(app.displayName).",
-            areas: [area],
-            confirmTitle: "Clean",
-            fullReset: false
+            areas: [area]
         )
     }
 
-    private func runClean(_ pending: PendingClean) {
+    private func runClean(_ areas: [AppCleanService.Area]) {
         busy = true
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let removed: Int
-                if pending.fullReset {
-                    removed = try AppCleanService.resetAll(
-                        bundleID: app.bundleID,
-                        containerPath: app.dataContainerPath,
-                        log: { line in
-                            DispatchQueue.main.async { appModel.log(line) }
-                        }
-                    )
-                } else {
-                    removed = try AppCleanService.clean(
-                        bundleID: app.bundleID,
-                        containerPath: app.dataContainerPath,
-                        areas: pending.areas,
-                        log: { line in
-                            DispatchQueue.main.async { appModel.log(line) }
-                        }
-                    )
-                }
+                let removed = try AppCleanService.clean(
+                    bundleID: app.bundleID,
+                    containerPath: app.dataContainerPath,
+                    areas: areas,
+                    log: { line in
+                        DispatchQueue.main.async { appModel.log(line) }
+                    }
+                )
                 let result = app.dataContainerPath.map { AppDiscoveryService.usage(for: $0) }
                 DispatchQueue.main.async {
                     if let result { usage = result }

@@ -19,10 +19,14 @@ enum AppDiscoveryService {
     static var lastProbe = ""
     private static var itunesCache: [String: (name: String, icon: UIImage?)] = [:]
 
-    static func discover(thirdPartyOnly: Bool = true) -> [InstalledApp] {
+    static func discover(
+        thirdPartyOnly: Bool = true,
+        progress: ((Int, Int) -> Void)? = nil
+    ) -> [InstalledApp] {
         lastProbe = ""
         var byID: [String: InstalledApp] = [:]
 
+        progress?(0, 0)
         let catalog = HAInstalledAppCatalog()
         merge(catalog, into: &byID, thirdPartyOnly: thirdPartyOnly)
 
@@ -42,7 +46,7 @@ enum AppDiscoveryService {
             }
         }
 
-        return enrich(byID).values.sorted {
+        return enrich(byID, progress: progress).values.sorted {
             $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
         }
     }
@@ -89,14 +93,21 @@ enum AppDiscoveryService {
         }
     }
 
-    private static func enrich(_ apps: [String: InstalledApp]) -> [String: InstalledApp] {
+    private static func enrich(
+        _ apps: [String: InstalledApp],
+        progress: ((Int, Int) -> Void)?
+    ) -> [String: InstalledApp] {
         var named = 0
         var iconed = 0
         var itunesHit = 0
         var itunesMiss = 0
         var result: [String: InstalledApp] = [:]
+        let total = apps.count
+        var index = 0
 
         for (id, app) in apps {
+            index += 1
+            progress?(index, total)
             var name = lastComponent(id)
             var icon: UIImage?
 
@@ -132,7 +143,7 @@ enum AppDiscoveryService {
             return value
         }
 
-        for country in ["", "id", "us"] {
+        for country in ["id", "us", ""] {
             var comps = URLComponents(string: "https://itunes.apple.com/lookup")
             var items = [URLQueryItem(name: "bundleId", value: bundleID)]
             if !country.isEmpty {
