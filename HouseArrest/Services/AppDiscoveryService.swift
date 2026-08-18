@@ -93,7 +93,9 @@ enum AppDiscoveryService {
 
     private static func enrich(_ apps: [String: InstalledApp]) -> [String: InstalledApp] {
         let wanted = Set(apps.keys)
+        lastProbe = ""
         let bundles = loadBundleCatalog(matching: wanted)
+        let bundleProbe = lastProbe
         var named = 0
         var iconed = 0
         var samples: [String] = []
@@ -124,7 +126,7 @@ enum AppDiscoveryService {
             )
         }
 
-        lastProbe = (["enrich apps=\(apps.count) named=\(named) icons=\(iconed) bundles=\(bundles.count)"] + samples)
+        lastProbe = (["enrich apps=\(apps.count) named=\(named) icons=\(iconed) bundles=\(bundles.count)"] + samples + [bundleProbe])
             .joined(separator: "\n")
         return result
     }
@@ -176,10 +178,11 @@ enum AppDiscoveryService {
                    wanted.contains(bid) {
                     var names = displayNames(in: itunes)
                     if let item = usableName(itunes["itemName"]) { names.insert(item, at: 0) }
-                    if result[bid] == nil {
-                        result[bid] = (names, nil)
+                    if var existing = result[bid] {
+                        existing.names.append(contentsOf: names)
+                        result[bid] = existing
                     } else {
-                        result[bid]?.names.append(contentsOf: names)
+                        result[bid] = (names, nil)
                     }
                 }
 
