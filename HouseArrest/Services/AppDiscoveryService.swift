@@ -44,8 +44,6 @@ enum AppDiscoveryService {
             for bundleID in LaunchServicesStore.identifiers() {
                 addIfNeeded(bundleID, into: &byID, thirdPartyOnly: thirdPartyOnly)
             }
-        } else {
-            _ = LaunchServicesStore.identifiers()
         }
 
         let result = enrich(byID, progress: progress).values.sorted {
@@ -78,9 +76,34 @@ enum AppDiscoveryService {
     ) -> [InstalledApp] {
         progress?("Checking for new apps", 0, 0)
         var byID = Dictionary(uniqueKeysWithValues: cachedApps.map { ($0.bundleID, $0) })
+
+        var class1Hits = 0
+        var missing: [String] = []
+        for id in byID.keys {
+            if bundleContainer(id) != nil {
+                class1Hits += 1
+            } else {
+                missing.append(id)
+            }
+        }
+        if class1Hits > 0 {
+            for id in missing {
+                HALog.write("refresh drop \(id) (no bundle container)")
+                byID.removeValue(forKey: id)
+            }
+        } else {
+            for (id, app) in byID {
+                if let path = app.dataContainerPath,
+                   !FileManager.default.fileExists(atPath: path) {
+                    HALog.write("refresh drop \(id) (data gone)")
+                    byID.removeValue(forKey: id)
+                }
+            }
+        }
+
         var added: [String: InstalledApp] = [:]
         let fresh = LaunchServicesStore.newIdentifiers()
-        HALog.write("refresh new ids=\(fresh.count)")
+        HALog.write("refresh new ids=\(fresh.count) dropped=\(missing.count) class1=\(class1Hits)")
         for bundleID in fresh {
             guard addIfNeeded(bundleID, into: &byID, thirdPartyOnly: thirdPartyOnly) else { continue }
             if let app = byID[bundleID] { added[bundleID] = app }
@@ -96,6 +119,14 @@ enum AppDiscoveryService {
         lastProbe = "refresh added=\(added.count) total=\(result.count)\n" + LaunchServicesStore.lastProbe
         HALog.write("refresh done added=\(added.count) total=\(result.count)")
         return result
+    }
+
+    private static func bundleContainer(_ bundleID: String) -> String? {
+        var err: NSString?
+        guard let path = MCMActivateContainerPath(1, bundleID, false, &err),
+              path.contains("/Containers/Bundle/Application/")
+        else { return nil }
+        return path
     }
 
     @discardableResult
