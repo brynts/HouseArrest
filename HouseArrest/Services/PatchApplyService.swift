@@ -17,12 +17,13 @@ enum PatchApplyService {
     static var access: ContainerAccessing = MHAContainerAccess()
 
     static func apply(project: PatchProject, log: (String) -> Void) throws -> ApplyReceipt {
+        HALog.write("apply start \(project.name) files=\(project.rules.count)")
         var tokens: [AccessToken] = []
-        defer { tokens.forEach { $0.release() } }
 
         var roots: [String: URL] = [:]
         for target in project.targets {
             let id = try PathSafety.validateTargetID(target)
+            HALog.write("apply resolve \(id)")
             let root = try resolveAndGrant(id, tokens: &tokens, log: log)
             roots[id] = root
         }
@@ -57,18 +58,20 @@ enum PatchApplyService {
                 log("backed up \(target)/\(rel)")
             }
 
+            HALog.write("apply write \(target)/\(rel)")
             try item.replacementData.write(to: dest, options: .atomic)
             log("wrote \(target)/\(rel) (\(item.replacementData.count) bytes)")
             entries.append(.init(targetID: target, relativePath: rel, backupPath: backupPath))
         }
 
+        HALog.write("apply done files=\(entries.count)")
         return ApplyReceipt(id: UUID(), projectID: project.id, appliedAt: Date(), entries: entries)
     }
 
     static func restore(receipt: ApplyReceipt, log: (String) -> Void) throws {
+        HALog.write("unpatch start files=\(receipt.entries.count)")
         guard !receipt.entries.isEmpty else { throw PatchError.nothingToRestore }
         var tokens: [AccessToken] = []
-        defer { tokens.forEach { $0.release() } }
 
         var roots: [String: URL] = [:]
         let targets = Set(receipt.entries.map(\.targetID))
@@ -96,6 +99,7 @@ enum PatchApplyService {
                 log("removed patched \(entry.targetID)/\(rel)")
             }
         }
+        HALog.write("unpatch done")
     }
 
     private static func resolveAndGrant(
