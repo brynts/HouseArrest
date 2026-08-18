@@ -33,6 +33,9 @@ struct SettingsView: View {
                     Button {
                         appModel.copyLogs()
                         copied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            copied = false
+                        }
                     } label: {
                         Label(copied ? "Copied" : "Copy logs", systemImage: "doc.on.doc")
                     }
