@@ -129,7 +129,7 @@
 				B10000000000000000000008 /* PatchApplyService.swift */,
 				B10000000000000000000009 /* HAPackageCodec.swift */,
 				B10000000000000000000018 /* AppDiscoveryService.swift */,
-				B1000000000000000001C /* LaunchServicesStore.swift */,
+				B1000000000000000000001C /* LaunchServicesStore.swift */,
 				B1000000000000000000001D /* AppCleanService.swift */,
 				B1000000000000000000001A /* AppCatalog.m */,
 				B1000000000000000000001B /* AppCatalog.h */,
