@@ -1,6 +1,5 @@
 import Foundation
 import UIKit
-import SystemConfiguration
 
 struct ContainerUsage {
     var documents: Int64 = 0
@@ -28,7 +27,7 @@ enum AppDiscoveryService {
         var byID: [String: InstalledApp] = [:]
 
         progress?("Finding apps", 0, 0)
-        let catalog = HAInstalledAppCatalog()
+        let catalog = HAInstalledAppCatalog() ?? [:]
         merge(catalog, into: &byID, thirdPartyOnly: thirdPartyOnly)
 
         if byID.isEmpty {
@@ -41,8 +40,7 @@ enum AppDiscoveryService {
                 byID[bundleID] = InstalledApp(
                     bundleID: bundleID,
                     displayName: lastComponent(bundleID),
-                    dataContainerPath: path,
-                    icon: nil
+                    dataContainerPath: path
                 )
             }
         }
@@ -88,8 +86,7 @@ enum AppDiscoveryService {
             byID[bundleID] = InstalledApp(
                 bundleID: bundleID,
                 displayName: lastComponent(bundleID),
-                dataContainerPath: path,
-                icon: nil
+                dataContainerPath: path
             )
         }
     }
@@ -103,18 +100,16 @@ enum AppDiscoveryService {
         var itunesHit = 0
         var itunesMiss = 0
         var result: [String: InstalledApp] = [:]
-        let online = isOnline()
-        if !online {
-            lastProbe = "itunes skipped offline apps=\(apps.count)"
-            progress?("Offline — using local names", apps.count, apps.count)
+
+        guard isOnline() else {
             for (id, app) in apps {
                 if let cached = cachedLookup(bundleID: id) {
                     itunesHit += 1
+                    AppIconStore.set(cached.icon, for: id)
                     result[id] = InstalledApp(
                         bundleID: id,
                         displayName: cached.name,
-                        dataContainerPath: app.dataContainerPath,
-                        icon: cached.icon
+                        dataContainerPath: app.dataContainerPath
                     )
                     if cached.name.caseInsensitiveCompare(lastComponent(id)) != .orderedSame { named += 1 }
                     if cached.icon != nil { iconed += 1 }
@@ -142,13 +137,13 @@ enum AppDiscoveryService {
                 itunesMiss += 1
             }
 
+            AppIconStore.set(icon, for: id)
             if name.caseInsensitiveCompare(lastComponent(id)) != .orderedSame { named += 1 }
             if icon != nil { iconed += 1 }
             result[id] = InstalledApp(
                 bundleID: id,
                 displayName: name,
-                dataContainerPath: app.dataContainerPath,
-                icon: icon
+                dataContainerPath: app.dataContainerPath
             )
         }
 
@@ -201,19 +196,19 @@ enum AppDiscoveryService {
     }
 
     private static func isOnline() -> Bool {
-        var address = sockaddr_in()
-        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-        address.sin_family = sa_family_t(AF_INET)
-        guard let reachability = withUnsafePointer(to: &address, { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                SCNetworkReachabilityCreateWithAddress(nil, $0)
+        guard let url = URL(string: "https://itunes.apple.com") else { return false }
+        var request = URLRequest(url: url, timeoutInterval: 2)
+        request.httpMethod = "HEAD"
+        let sem = DispatchSemaphore(value: 0)
+        var ok = false
+        URLSession.shared.dataTask(with: request) { _, response, _ in
+            if let http = response as? HTTPURLResponse, (200..<500).contains(http.statusCode) {
+                ok = true
             }
-        }) else { return false }
-        var flags = SCNetworkReachabilityFlags()
-        guard SCNetworkReachabilityGetFlags(reachability, &flags) else { return false }
-        let reachable = flags.contains(.reachable)
-        let needsConnection = flags.contains(.connectionRequired)
-        return reachable && !needsConnection
+            sem.signal()
+        }.resume()
+        _ = sem.wait(timeout: .now() + 2.5)
+        return ok
     }
 
     private static func itunesIcon(from urlString: String?) -> UIImage? {
