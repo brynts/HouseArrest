@@ -123,16 +123,16 @@ struct AppsView: View {
         errorText = nil
         DispatchQueue.global(qos: .userInitiated).async {
             let list = AppDiscoveryService.discover(thirdPartyOnly: true, measureSize: measure)
-            let probe = HACatalogLastProbe()
+            let probe = HACatalogLastProbe() + "\n" + LaunchServicesStore.lastProbe
             DispatchQueue.main.async {
                 apps = list
                 isLoading = false
-                for line in probe.split(separator: "\n") {
+                for line in probe.split(separator: "\n") where !line.isEmpty {
                     appModel.log(String(line))
                 }
                 appModel.log("apps scan third-party=\(list.count)")
                 if list.isEmpty {
-                    errorText = "No apps from LS / MobileInstallation / container walk. Copy logs from Settings."
+                    errorText = "No apps resolved. Copy logs from Settings."
                 }
             }
         }

@@ -3,13 +3,53 @@ import UIKit
 
 enum AppDiscoveryService {
     static func discover(thirdPartyOnly: Bool = true, measureSize: Bool = false) -> [InstalledApp] {
+        var byID: [String: InstalledApp] = [:]
+
         let catalog = HAInstalledAppCatalog()
-        var apps: [InstalledApp] = []
-        apps.reserveCapacity(catalog.count)
+        merge(catalog, into: &byID, thirdPartyOnly: thirdPartyOnly, measureSize: measureSize)
 
-        for (bundleID, info) in catalog {
+        if byID.isEmpty {
+            let candidates = LaunchServicesStore.identifiers()
+            var resolved = 0
+            for bundleID in candidates {
+                if thirdPartyOnly && isSystemBundle(bundleID) { continue }
+                var err: NSString?
+                guard let path = MCMActivateContainerPath(2, bundleID, false, &err),
+                      PathSafety.isAppDataRoot(URL(fileURLWithPath: path))
+                else { continue }
+                resolved += 1
+                byID[bundleID] = makeApp(
+                    bundleID: bundleID,
+                    name: bundleID.split(separator: ".").last.map(String.init) ?? bundleID,
+                    path: path,
+                    measureSize: measureSize
+                )
+            }
+            // probe is stored on LaunchServicesStore.lastProbe
+            _ = resolved
+        }
+
+        return byID.values.sorted {
+            $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+        }
+    }
+
+    static func isSystemBundle(_ id: String) -> Bool {
+        id.hasPrefix("com.apple.")
+            || id.hasPrefix("systemgroup.")
+            || id == "com.apple.mobile.MobileHouseArrest"
+    }
+
+    private static func merge(
+        _ catalog: [AnyHashable: Any],
+        into byID: inout [String: InstalledApp],
+        thirdPartyOnly: Bool,
+        measureSize: Bool
+    ) {
+        for (rawID, rawInfo) in catalog {
+            guard let bundleID = rawID as? String else { continue }
             if thirdPartyOnly && isSystemBundle(bundleID) { continue }
-
+            let info = rawInfo as? [String: Any] ?? [:]
             let name = (info["name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
                 ?? bundleID.split(separator: ".").last.map(String.init)
                 ?? bundleID
@@ -21,32 +61,27 @@ enum AppDiscoveryService {
             if let p = path, !PathSafety.isAppDataRoot(URL(fileURLWithPath: p)) {
                 path = nil
             }
-
-            var size: Int64 = 0
-            if measureSize, let path {
-                size = directorySize(at: path)
-            }
-
-            apps.append(
-                InstalledApp(
-                    bundleID: bundleID,
-                    displayName: name,
-                    dataContainerPath: path,
-                    dataSizeBytes: size,
-                    icon: HAIconForBundleID(bundleID)
-                )
-            )
-        }
-
-        return apps.sorted {
-            $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+            byID[bundleID] = makeApp(bundleID: bundleID, name: name, path: path, measureSize: measureSize)
         }
     }
 
-    static func isSystemBundle(_ id: String) -> Bool {
-        id.hasPrefix("com.apple.")
-            || id.hasPrefix("systemgroup.")
-            || id == "com.apple.mobile.MobileHouseArrest"
+    private static func makeApp(
+        bundleID: String,
+        name: String,
+        path: String?,
+        measureSize: Bool
+    ) -> InstalledApp {
+        var size: Int64 = 0
+        if measureSize, let path {
+            size = directorySize(at: path)
+        }
+        return InstalledApp(
+            bundleID: bundleID,
+            displayName: name,
+            dataContainerPath: path,
+            dataSizeBytes: size,
+            icon: HAIconForBundleID(bundleID)
+        )
     }
 
     private static func directorySize(at path: String) -> Int64 {
