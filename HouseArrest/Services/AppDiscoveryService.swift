@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import SystemConfiguration
 
 struct ContainerUsage {
     var documents: Int64 = 0
@@ -21,12 +22,12 @@ enum AppDiscoveryService {
 
     static func discover(
         thirdPartyOnly: Bool = true,
-        progress: ((Int, Int) -> Void)? = nil
+        progress: ((String, Int, Int) -> Void)? = nil
     ) -> [InstalledApp] {
         lastProbe = ""
         var byID: [String: InstalledApp] = [:]
 
-        progress?(0, 0)
+        progress?("Finding apps", 0, 0)
         let catalog = HAInstalledAppCatalog()
         merge(catalog, into: &byID, thirdPartyOnly: thirdPartyOnly)
 
@@ -95,19 +96,41 @@ enum AppDiscoveryService {
 
     private static func enrich(
         _ apps: [String: InstalledApp],
-        progress: ((Int, Int) -> Void)?
+        progress: ((String, Int, Int) -> Void)?
     ) -> [String: InstalledApp] {
         var named = 0
         var iconed = 0
         var itunesHit = 0
         var itunesMiss = 0
         var result: [String: InstalledApp] = [:]
+        let online = isOnline()
+        if !online {
+            lastProbe = "itunes skipped offline apps=\(apps.count)"
+            progress?("Offline — using local names", apps.count, apps.count)
+            for (id, app) in apps {
+                if let cached = cachedLookup(bundleID: id) {
+                    itunesHit += 1
+                    result[id] = InstalledApp(
+                        bundleID: id,
+                        displayName: cached.name,
+                        dataContainerPath: app.dataContainerPath,
+                        icon: cached.icon
+                    )
+                    if cached.name.caseInsensitiveCompare(lastComponent(id)) != .orderedSame { named += 1 }
+                    if cached.icon != nil { iconed += 1 }
+                } else {
+                    result[id] = app
+                }
+            }
+            lastProbe = "itunes skipped offline hit=\(itunesHit) named=\(named) icons=\(iconed)"
+            return result
+        }
+
         let total = apps.count
         var index = 0
-
         for (id, app) in apps {
             index += 1
-            progress?(index, total)
+            progress?("Fetching App Store info", index, total)
             var name = lastComponent(id)
             var icon: UIImage?
 
@@ -133,7 +156,7 @@ enum AppDiscoveryService {
         return result
     }
 
-    private static func itunesLookup(bundleID: String) -> (name: String, icon: UIImage?)? {
+    private static func cachedLookup(bundleID: String) -> (name: String, icon: UIImage?)? {
         if let cached = itunesCache[bundleID] { return cached }
         if let stored = UserDefaults.standard.string(forKey: "ha.itunes.name.\(bundleID)"),
            !stored.isEmpty {
@@ -142,6 +165,11 @@ enum AppDiscoveryService {
             itunesCache[bundleID] = value
             return value
         }
+        return nil
+    }
+
+    private static func itunesLookup(bundleID: String) -> (name: String, icon: UIImage?)? {
+        if let cached = cachedLookup(bundleID: bundleID) { return cached }
 
         for country in ["id", "us", ""] {
             var comps = URLComponents(string: "https://itunes.apple.com/lookup")
@@ -170,6 +198,22 @@ enum AppDiscoveryService {
             return (name, icon)
         }
         return nil
+    }
+
+    private static func isOnline() -> Bool {
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        guard let reachability = withUnsafePointer(to: &address, { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                SCNetworkReachabilityCreateWithAddress(nil, $0)
+            }
+        }) else { return false }
+        var flags = SCNetworkReachabilityFlags()
+        guard SCNetworkReachabilityGetFlags(reachability, &flags) else { return false }
+        let reachable = flags.contains(.reachable)
+        let needsConnection = flags.contains(.connectionRequired)
+        return reachable && !needsConnection
     }
 
     private static func itunesIcon(from urlString: String?) -> UIImage? {
