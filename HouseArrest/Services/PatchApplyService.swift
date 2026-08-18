@@ -14,7 +14,8 @@ struct ApplyReceipt: Codable, Identifiable {
 }
 
 enum PatchApplyService {
-    static var access: ContainerAccessing = StubContainerAccess()
+    /// Default: real MCM + bad_query. Swap to StubContainerAccess only for UI-only builds.
+    static var access: ContainerAccessing = MHAContainerAccess()
 
     static func apply(project: PatchProject, log: (String) -> Void) throws -> ApplyReceipt {
         var tokens: [AccessToken] = []
@@ -44,9 +45,9 @@ enum PatchApplyService {
         var entries: [ApplyReceipt.Entry] = []
         let backupRoot = try backupDirectory(for: project.id)
 
-        for rule in project.rules {
-            let target = try PathSafety.validateTargetID(rule.targetID)
-            let rel = try PathSafety.validateRelativePath(rule.relativePath)
+        for item in project.rules {
+            let target = try PathSafety.validateTargetID(item.targetID)
+            let rel = try PathSafety.validateRelativePath(item.relativePath)
             guard let root = roots[target] else {
                 throw PatchError.targetUnavailable(target)
             }
@@ -70,8 +71,8 @@ enum PatchApplyService {
                 backupPath = backup.path
             }
 
-            try rule.replacementData.write(to: dest, options: .atomic)
-            log("wrote \(target)/\(rel) (\(rule.replacementData.count) bytes)")
+            try item.replacementData.write(to: dest, options: .atomic)
+            log("wrote \(target)/\(rel) (\(item.replacementData.count) bytes)")
             entries.append(.init(targetID: target, relativePath: rel, backupPath: backupPath))
         }
 

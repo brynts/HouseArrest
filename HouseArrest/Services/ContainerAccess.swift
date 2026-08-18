@@ -1,10 +1,8 @@
 import Foundation
 
-/// Pluggable container access. Replace the stub with MCM + bad_query (MHA).
+/// Pluggable container access.
 protocol ContainerAccessing: AnyObject {
-    /// Resolves on-disk root for an app (`com…`) or App Group (`group…`).
     func resolveRoot(targetID: String) throws -> URL
-    /// Grants traversal/write for the duration of the apply.
     func grant(root: URL, targetID: String) throws -> AccessToken
 }
 
@@ -13,7 +11,71 @@ struct AccessToken {
     let release: () -> Void
 }
 
-/// Stub — always fails until wired to real MobileHouseArrest exploit.
+/// Real MobileHouseArrest path: MCM activate + bad_query grant.
+final class MHAContainerAccess: ContainerAccessing {
+    private static let appGroupMCMClass: UInt64 = 7
+
+    func resolveRoot(targetID: String) throws -> URL {
+        let id = try PathSafety.validateTargetID(targetID)
+        if id.hasPrefix("group.") {
+            guard let path = Self.resolveAppGroup(id) else {
+                throw PatchError.targetUnavailable(id)
+            }
+            return URL(fileURLWithPath: path)
+        }
+        guard let path = Self.resolveApp(id) else {
+            throw PatchError.targetUnavailable(id)
+        }
+        return URL(fileURLWithPath: path)
+    }
+
+    func grant(root: URL, targetID: String) throws -> AccessToken {
+        let id = try PathSafety.validateTargetID(targetID)
+        var pathC = root.path.utf8CString.map { Int8(bitPattern: $0) }
+        let handle: Int64
+        if id.hasPrefix("group.") {
+            var groupC = id.utf8CString.map { Int8(bitPattern: $0) }
+            handle = bad_query(&pathC, true, &groupC, true)
+        } else {
+            handle = bad_query(&pathC, true, nil, false)
+        }
+        guard handle >= 0 else {
+            throw PatchError.accessDenied(id)
+        }
+        return AccessToken(id: handle) {
+            bad_query_release(handle)
+        }
+    }
+
+    private static func resolveApp(_ bundleID: String) -> String? {
+        var err: NSString?
+        guard let path = MCMActivateContainerPath(2, bundleID, false, &err),
+              PathSafety.isAppDataRoot(URL(fileURLWithPath: path))
+        else { return nil }
+        return path
+    }
+
+    private static func resolveAppGroup(_ groupID: String) -> String? {
+        let attempts: [(UInt64, Bool)] = [
+            (appGroupMCMClass, true),
+            (appGroupMCMClass, false),
+            (2, true),
+            (1, true)
+        ]
+        for (cls, asGroup) in attempts {
+            var err: NSString?
+            guard let path = MCMActivateContainerPath(cls, groupID, asGroup, &err) else {
+                continue
+            }
+            if PathSafety.isAppGroupRoot(URL(fileURLWithPath: path)) {
+                return path
+            }
+        }
+        return nil
+    }
+}
+
+/// Stub for simulator / when exploit is unavailable.
 final class StubContainerAccess: ContainerAccessing {
     func resolveRoot(targetID: String) throws -> URL {
         throw PatchError.targetUnavailable(targetID)
@@ -46,12 +108,10 @@ enum PathSafety {
     }
 
     static func isAppGroupRoot(_ url: URL) -> Bool {
-        let path = url.standardizedFileURL.path
-        return path.contains("/Containers/Shared/AppGroup/")
+        url.standardizedFileURL.path.contains("/Containers/Shared/AppGroup/")
     }
 
     static func isAppDataRoot(_ url: URL) -> Bool {
-        let path = url.standardizedFileURL.path
-        return path.contains("/Containers/Data/Application/")
+        url.standardizedFileURL.path.contains("/Containers/Data/Application/")
     }
 }
