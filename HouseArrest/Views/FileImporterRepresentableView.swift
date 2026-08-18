@@ -2,7 +2,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// UIKit document picker (same approach as Feather).
-/// SwiftUI `.fileImporter` often greys out custom extensions on signed sideloaded builds.
 struct FileImporterRepresentableView: UIViewControllerRepresentable {
     var allowedContentTypes: [UTType]
     var allowsMultipleSelection: Bool = false
@@ -32,11 +31,16 @@ struct FileImporterRepresentableView: UIViewControllerRepresentable {
         }
 
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-            onDocumentsPicked(urls)
+            let picked = urls
+            DispatchQueue.main.async {
+                self.onDocumentsPicked(picked)
+            }
         }
 
         func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-            onDocumentsPicked([])
+            DispatchQueue.main.async {
+                self.onDocumentsPicked([])
+            }
         }
     }
 }

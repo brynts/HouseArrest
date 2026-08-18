@@ -1,20 +1,25 @@
 import Foundation
 import UIKit
 
-struct InstalledApp: Identifiable {
+enum AppIconStore {
+    private static var icons: [String: UIImage] = [:]
+
+    static func set(_ icon: UIImage?, for bundleID: String) {
+        if let icon {
+            icons[bundleID] = icon
+        }
+    }
+
+    static func icon(for bundleID: String) -> UIImage? {
+        icons[bundleID]
+    }
+}
+
+struct InstalledApp: Identifiable, Hashable {
     var id: String { bundleID }
     var bundleID: String
     var displayName: String
     var dataContainerPath: String?
-    var icon: UIImage?
-}
 
-extension InstalledApp: Hashable {
-    static func == (lhs: InstalledApp, rhs: InstalledApp) -> Bool {
-        lhs.bundleID == rhs.bundleID
-    }
-
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(bundleID)
-    }
+    var icon: UIImage? { AppIconStore.icon(for: bundleID) }
 }
