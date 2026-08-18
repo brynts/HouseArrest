@@ -122,16 +122,17 @@ struct AppsView: View {
         isLoading = true
         errorText = nil
         DispatchQueue.global(qos: .userInitiated).async {
-            let catalogCount = HAInstalledAppCatalog().count
             let list = AppDiscoveryService.discover(thirdPartyOnly: true, measureSize: measure)
+            let probe = HACatalogLastProbe()
             DispatchQueue.main.async {
                 apps = list
                 isLoading = false
-                appModel.log("apps scan: catalog=\(catalogCount) third-party=\(list.count)")
+                for line in probe.split(separator: "\n") {
+                    appModel.log(String(line))
+                }
+                appModel.log("apps scan third-party=\(list.count)")
                 if list.isEmpty {
-                    errorText = catalogCount == 0
-                        ? "LaunchServices returned no apps."
-                        : "Catalog had \(catalogCount) apps, none were third-party."
+                    errorText = "No apps from LS / MobileInstallation / container walk. Copy logs from Settings."
                 }
             }
         }

@@ -1,7 +1,27 @@
 #import "AppCatalog.h"
+#import "bad_query.h"
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import <dlfcn.h>
+
+static NSMutableString *gProbe;
+
+static void probeReset(void) {
+    gProbe = [NSMutableString string];
+}
+
+static void probe(NSString *fmt, ...) {
+    if (!gProbe) gProbe = [NSMutableString string];
+    va_list args;
+    va_start(args, fmt);
+    NSString *line = [[NSString alloc] initWithFormat:fmt arguments:args];
+    va_end(args);
+    [gProbe appendFormat:@"%@\n", line];
+}
+
+NSString *HACatalogLastProbe(void) {
+    return gProbe.length ? [gProbe copy] : @"(no probe)";
+}
 
 static NSString *stringValue(id value) {
     if ([value isKindOfClass:[NSString class]] && [value length] > 0) return value;
@@ -13,55 +33,71 @@ static NSString *pathValue(id value) {
     return stringValue(value);
 }
 
+static void addProxy(NSMutableDictionary *result, id app) {
+    NSString *bundleID = nil;
+    SEL bidSel = NSSelectorFromString(@"bundleIdentifier");
+    if ([app respondsToSelector:bidSel]) {
+        bundleID = stringValue(((id (*)(id, SEL))objc_msgSend)(app, bidSel));
+    }
+    if (!bundleID.length) return;
+
+    NSString *name = bundleID;
+    SEL nameSel = NSSelectorFromString(@"localizedName");
+    if ([app respondsToSelector:nameSel]) {
+        NSString *localized = stringValue(((id (*)(id, SEL))objc_msgSend)(app, nameSel));
+        if (localized.length) name = localized;
+    }
+
+    NSString *container = nil;
+    for (NSString *selName in @[ @"dataContainerURL", @"containerURL" ]) {
+        SEL sel = NSSelectorFromString(selName);
+        if (![app respondsToSelector:sel]) continue;
+        container = pathValue(((id (*)(id, SEL))objc_msgSend)(app, sel));
+        if (container.length) break;
+    }
+
+    NSMutableDictionary *entry = [NSMutableDictionary dictionary];
+    entry[@"name"] = name;
+    if (container.length) entry[@"container"] = container;
+    result[bundleID] = entry;
+}
+
 static NSDictionary *appsFromWorkspace(void) {
     NSMutableDictionary *result = [NSMutableDictionary dictionary];
     Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
+    probe(@"LSApplicationWorkspace class=%@", workspaceClass ?: @"nil");
     SEL defaultSel = NSSelectorFromString(@"defaultWorkspace");
     if (!workspaceClass || ![workspaceClass respondsToSelector:defaultSel]) return result;
     id workspace = ((id (*)(id, SEL))objc_msgSend)(workspaceClass, defaultSel);
+    probe(@"defaultWorkspace=%@", workspace ?: @"nil");
     if (!workspace) return result;
 
-    NSArray *apps = nil;
-    for (NSString *selName in @[ @"allInstalledApplications", @"allApplications" ]) {
+    for (NSString *selName in @[ @"allInstalledApplications", @"allApplications", @"installedApplications" ]) {
         SEL sel = NSSelectorFromString(selName);
-        if (![workspace respondsToSelector:sel]) continue;
+        BOOL responds = [workspace respondsToSelector:sel];
+        if (!responds) {
+            probe(@"LS %@ responds=NO", selName);
+            continue;
+        }
         id candidate = ((id (*)(id, SEL))objc_msgSend)(workspace, sel);
-        if ([candidate isKindOfClass:[NSArray class]] && [candidate count] > 0) {
-            apps = candidate;
-            break;
-        }
+        NSUInteger count = [candidate isKindOfClass:[NSArray class]] ? [candidate count] : 0;
+        probe(@"LS %@ class=%@ count=%lu", selName, NSStringFromClass([candidate class]) ?: @"nil", (unsigned long)count);
+        if (count == 0) continue;
+        for (id app in candidate) addProxy(result, app);
+        if (result.count) return result;
     }
-    if (!apps.count) return result;
 
-    for (id app in apps) {
-        @autoreleasepool {
-            NSString *bundleID = nil;
-            SEL bidSel = NSSelectorFromString(@"bundleIdentifier");
-            if ([app respondsToSelector:bidSel]) {
-                bundleID = stringValue(((id (*)(id, SEL))objc_msgSend)(app, bidSel));
-            }
-            if (!bundleID.length) continue;
-
-            NSString *name = bundleID;
-            SEL nameSel = NSSelectorFromString(@"localizedName");
-            if ([app respondsToSelector:nameSel]) {
-                NSString *localized = stringValue(((id (*)(id, SEL))objc_msgSend)(app, nameSel));
-                if (localized.length) name = localized;
-            }
-
-            NSString *container = nil;
-            for (NSString *selName in @[ @"dataContainerURL", @"containerURL" ]) {
-                SEL sel = NSSelectorFromString(selName);
-                if (![app respondsToSelector:sel]) continue;
-                container = pathValue(((id (*)(id, SEL))objc_msgSend)(app, sel));
-                if (container.length) break;
-            }
-
-            NSMutableDictionary *entry = [NSMutableDictionary dictionary];
-            entry[@"name"] = name;
-            if (container.length) entry[@"container"] = container;
-            result[bundleID] = entry;
+    SEL enumSel = NSSelectorFromString(@"enumerateApplicationsOfType:block:");
+    if ([workspace respondsToSelector:enumSel]) {
+        for (NSUInteger type = 0; type <= 1; type++) {
+            NSMutableArray *collected = [NSMutableArray array];
+            void (^block)(id) = ^(id app) { if (app) [collected addObject:app]; };
+            ((void (*)(id, SEL, NSUInteger, id))objc_msgSend)(workspace, enumSel, type, block);
+            probe(@"LS enumerate type=%lu count=%lu", (unsigned long)type, (unsigned long)collected.count);
+            for (id app in collected) addProxy(result, app);
         }
+    } else {
+        probe(@"LS enumerateApplicationsOfType:block: responds=NO");
     }
     return result;
 }
@@ -74,40 +110,110 @@ static NSDictionary *appsFromMobileInstallation(void) {
     );
     void *lookup = dlsym(RTLD_DEFAULT, "MobileInstallationLookup");
     if (!lookup && handle) lookup = dlsym(handle, "MobileInstallationLookup");
+    probe(@"MobileInstallationLookup=%p handle=%p", lookup, handle);
     if (!lookup) return result;
 
-    NSDictionary *apps = nil;
     NSArray *optionSets = @[
         @{ @"ApplicationType": @"User" },
         @{ @"ApplicationType": @"Any" },
         @{},
     ];
     for (NSDictionary *options in optionSets) {
-        apps = ((NSDictionary *(*)(NSDictionary *, void *))lookup)(options, NULL);
-        if ([apps isKindOfClass:[NSDictionary class]] && apps.count > 0) break;
+        NSDictionary *apps = ((NSDictionary *(*)(NSDictionary *, void *))lookup)(options, NULL);
+        probe(@"MI lookup options=%@ class=%@ count=%lu",
+              options[@"ApplicationType"] ?: @"empty",
+              NSStringFromClass([apps class]) ?: @"nil",
+              (unsigned long)([apps isKindOfClass:[NSDictionary class]] ? apps.count : 0));
+        if (![apps isKindOfClass:[NSDictionary class]] || apps.count == 0) continue;
+        [apps enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
+            if (![key isKindOfClass:[NSString class]] || ![obj isKindOfClass:[NSDictionary class]]) return;
+            NSDictionary *info = obj;
+            NSMutableDictionary *entry = [NSMutableDictionary dictionary];
+            entry[@"name"] = stringValue(info[@"CFBundleDisplayName"])
+                ?: stringValue(info[@"CFBundleName"])
+                ?: (NSString *)key;
+            NSString *container = pathValue(info[@"Container"]) ?: pathValue(info[@"ContainerPath"]);
+            if (container.length) entry[@"container"] = container;
+            result[key] = entry;
+        }];
+        if (result.count) break;
     }
-    if (![apps isKindOfClass:[NSDictionary class]]) return result;
+    return result;
+}
 
-    [apps enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
-        if (![key isKindOfClass:[NSString class]] || ![obj isKindOfClass:[NSDictionary class]]) return;
-        NSDictionary *info = obj;
-        NSString *name = stringValue(info[@"CFBundleDisplayName"])
-            ?: stringValue(info[@"CFBundleName"])
-            ?: (NSString *)key;
-        NSString *container = pathValue(info[@"Container"])
-            ?: pathValue(info[@"ContainerPath"]);
-        NSMutableDictionary *entry = [NSMutableDictionary dictionary];
-        entry[@"name"] = name;
-        if (container.length) entry[@"container"] = container;
-        result[key] = entry;
-    }];
+static NSString *metadataName(NSString *containerPath) {
+    NSString *meta = [containerPath stringByAppendingPathComponent:@".com.apple.mobile_container_manager.metadata.plist"];
+    NSDictionary *plist = [NSDictionary dictionaryWithContentsOfFile:meta];
+    if (![plist isKindOfClass:[NSDictionary class]]) return nil;
+    NSString *bid = stringValue(plist[@"MCMMetadataIdentifier"]);
+    id info = plist[@"MCMMetadataInfo"];
+    if ([info isKindOfClass:[NSDictionary class]]) {
+        NSString *name = stringValue(info[@"CFBundleDisplayName"]) ?: stringValue(info[@"CFBundleName"]);
+        if (name.length) return [NSString stringWithFormat:@"%@\t%@", bid ?: @"", name];
+    }
+    return bid;
+}
+
+static NSDictionary *appsFromContainerWalk(void) {
+    NSMutableDictionary *result = [NSMutableDictionary dictionary];
+    char path[] = "/var/mobile/Containers/Data/Application";
+    int64_t handle = bad_query(path, true, NULL, false);
+    probe(@"bad_query grant Application handle=%lld", handle);
+
+    NSError *err = nil;
+    NSArray *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:@(path) error:&err];
+    probe(@"NSFileManager Application dir count=%lu err=%@", (unsigned long)names.count, err.localizedDescription ?: @"none");
+
+    if (names.count == 0) {
+        char *listed = bad_query_list(path, 250000);
+        probe(@"bad_query_list ptr=%p", listed);
+        if (listed) {
+            NSArray *lines = [[NSString stringWithUTF8String:listed] componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]];
+            free(listed);
+            NSMutableArray *dirs = [NSMutableArray array];
+            for (NSString *line in lines) {
+                if (line.length) [dirs addObject:[line lastPathComponent]];
+            }
+            names = dirs;
+            probe(@"bad_query_list entries=%lu", (unsigned long)names.count);
+        }
+    }
+
+    for (NSString *name in names) {
+        @autoreleasepool {
+            if (name.length != 36) continue;
+            NSString *container = [@(path) stringByAppendingPathComponent:name];
+            NSString *metaPath = [container stringByAppendingPathComponent:@".com.apple.mobile_container_manager.metadata.plist"];
+            NSDictionary *plist = [NSDictionary dictionaryWithContentsOfFile:metaPath];
+            NSString *bundleID = stringValue(plist[@"MCMMetadataIdentifier"]);
+            if (!bundleID.length) continue;
+            NSString *display = bundleID;
+            id info = plist[@"MCMMetadataInfo"];
+            if ([info isKindOfClass:[NSDictionary class]]) {
+                NSString *n = stringValue(info[@"CFBundleDisplayName"]) ?: stringValue(info[@"CFBundleName"]);
+                if (n.length) display = n;
+            }
+            NSMutableDictionary *entry = [NSMutableDictionary dictionary];
+            entry[@"name"] = display;
+            entry[@"container"] = container;
+            result[bundleID] = entry;
+        }
+    }
+    if (handle >= 0) bad_query_release(handle);
+    probe(@"container walk count=%lu", (unsigned long)result.count);
     return result;
 }
 
 NSDictionary<NSString *, NSDictionary *> *HAInstalledAppCatalog(void) {
+    probeReset();
+    probe(@"host bundle=%@", NSBundle.mainBundle.bundleIdentifier ?: @"nil");
     NSDictionary *workspace = appsFromWorkspace();
+    probe(@"workspace count=%lu", (unsigned long)workspace.count);
     if (workspace.count > 0) return workspace;
-    return appsFromMobileInstallation();
+    NSDictionary *mi = appsFromMobileInstallation();
+    probe(@"mobileinstall count=%lu", (unsigned long)mi.count);
+    if (mi.count > 0) return mi;
+    return appsFromContainerWalk();
 }
 
 static NSData *iconDataFromProxy(id proxy) {

@@ -3,8 +3,8 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// Name / container path for every installed app (LaunchServices first).
 NSDictionary<NSString *, NSDictionary *> *HAInstalledAppCatalog(void);
 UIImage * _Nullable HAIconForBundleID(NSString *bundleID);
+NSString *HACatalogLastProbe(void);
 
 NS_ASSUME_NONNULL_END

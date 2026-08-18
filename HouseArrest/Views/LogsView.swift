@@ -3,6 +3,7 @@ import SwiftUI
 struct LogsView: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
+    @State private var copied = false
 
     var body: some View {
         NavigationStack {
@@ -24,7 +25,15 @@ struct LogsView: View {
                     Button("Close") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
+                    Button("Copy") {
+                        appModel.copyLogs()
+                        copied = true
+                    }
+                    .disabled(appModel.logLines.isEmpty)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button("Clear") { appModel.logLines.removeAll() }
+                        .disabled(appModel.logLines.isEmpty)
                 }
             }
         }
