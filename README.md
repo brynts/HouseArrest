@@ -3,26 +3,28 @@
 Container patch tool for iOS. Apply file replacements into **app data** and **App Group** containers.
 
 > Display name: **HouseArrest**  
-> Bundle ID for MHA path: `com.apple.mobile.MobileHouseArrest` (required for container access)
+> Bundle ID: `com.apple.mobile.MobileHouseArrest` (required for container access)
 
 ## Focus (v1)
 
 - **Home** — device info, compatibility, quick status
-- **Patches** — import / create / apply / restore packages (app + `group.*`)
+- **Patches** — import / create / apply packages (app + `group.*`)
 - Logs & Settings
 
-Not a 3105 fork. New UI, patch-first architecture, App Group support from day one.
+Patch-first architecture with App Group support from day one.
 
 ## Package format
 
-Uses `.ha` packages (schema v1). Import of legacy `.3105` can be added later.
+Uses `.ha` packages (schema v1).
 
 ## Build
 
 Open `HouseArrest.xcodeproj` in Xcode 16+, target iOS 17+.
 
-Exploit / MCM bridge code is **not** bundled in this scaffold — plug your `MobileHouseArrest` container access layer into `ContainerAccess`.
+Or run **Actions → Build IPA** (manual only). Output is an unsigned IPA on a **draft** release.
+
+Container access layer plugs into `ContainerAccess` (MCM + path grant). Not included in this scaffold until wired.
 
 ## Status
 
-Scaffold. Wire `ContainerAccess` to real MCM + `bad_query` before device testing.
+Scaffold. Wire `ContainerAccess` before device patch testing.
