@@ -47,6 +47,7 @@ struct SettingsView: View {
                     LabeledContent("Focus", value: "Patch tool (app + App Group)")
                 }
             }
+            .tint(HATheme.accent)
             .navigationTitle("Settings")
         }
     }
