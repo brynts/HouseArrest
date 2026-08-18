@@ -76,34 +76,20 @@ enum AppDiscoveryService {
     ) -> [InstalledApp] {
         progress?("Checking for new apps", 0, 0)
         var byID = Dictionary(uniqueKeysWithValues: cachedApps.map { ($0.bundleID, $0) })
-
-        var class1Hits = 0
-        var missing: [String] = []
-        for id in byID.keys {
-            if bundleContainer(id) != nil {
-                class1Hits += 1
-            } else {
-                missing.append(id)
-            }
-        }
-        if class1Hits > 0 {
-            for id in missing {
-                HALog.write("refresh drop \(id) (no bundle container)")
+        var dropped = 0
+        for (id, app) in byID {
+            guard let path = app.dataContainerPath,
+                  FileManager.default.fileExists(atPath: path) else {
                 byID.removeValue(forKey: id)
-            }
-        } else {
-            for (id, app) in byID {
-                if let path = app.dataContainerPath,
-                   !FileManager.default.fileExists(atPath: path) {
-                    HALog.write("refresh drop \(id) (data gone)")
-                    byID.removeValue(forKey: id)
-                }
+                dropped += 1
+                HALog.write("refresh drop \(id)")
+                continue
             }
         }
 
         var added: [String: InstalledApp] = [:]
         let fresh = LaunchServicesStore.newIdentifiers()
-        HALog.write("refresh new ids=\(fresh.count) dropped=\(missing.count) class1=\(class1Hits)")
+        HALog.write("refresh new ids=\(fresh.count) dropped=\(dropped)")
         for bundleID in fresh {
             guard addIfNeeded(bundleID, into: &byID, thirdPartyOnly: thirdPartyOnly) else { continue }
             if let app = byID[bundleID] { added[bundleID] = app }
@@ -116,17 +102,9 @@ enum AppDiscoveryService {
             $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
         }
         cachedApps = result
-        lastProbe = "refresh added=\(added.count) total=\(result.count)\n" + LaunchServicesStore.lastProbe
-        HALog.write("refresh done added=\(added.count) total=\(result.count)")
+        lastProbe = "refresh added=\(added.count) dropped=\(dropped) total=\(result.count)\n" + LaunchServicesStore.lastProbe
+        HALog.write("refresh done added=\(added.count) dropped=\(dropped) total=\(result.count)")
         return result
-    }
-
-    private static func bundleContainer(_ bundleID: String) -> String? {
-        var err: NSString?
-        guard let path = MCMActivateContainerPath(1, bundleID, false, &err),
-              path.contains("/Containers/Bundle/Application/")
-        else { return nil }
-        return path
     }
 
     @discardableResult
