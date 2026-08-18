@@ -159,7 +159,6 @@ struct AppDetailView: View {
     @State private var measuring = false
     @State private var busy = false
     @State private var pending: PendingClean?
-    @State private var showImporter = false
 
     private var installed: InstalledPatchRecord? {
         appModel.installedPatches[app.bundleID]
@@ -213,8 +212,8 @@ struct AppDetailView: View {
                     Label("Browse files", systemImage: "folder")
                 }
                 .disabled(busy)
-                Button { showImporter = true } label: {
-                    Label("Patch", systemImage: "wrench.and.screwdriver")
+                Button(action: pickPatch) {
+                    Label(busy ? "Applying…" : "Patch", systemImage: "wrench.and.screwdriver")
                 }
                 .disabled(busy)
             }
@@ -260,16 +259,6 @@ struct AppDetailView: View {
         .navigationTitle(app.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: loadUsage)
-        .sheet(isPresented: $showImporter) {
-            FileImporterRepresentableView(
-                allowedContentTypes: [.haPackage],
-                allowsMultipleSelection: false
-            ) { urls in
-                showImporter = false
-                handlePatch(urls)
-            }
-            .ignoresSafeArea()
-        }
         .alert("Apps", isPresented: Binding(
             get: { message != nil },
             set: { if !$0 { message = nil } }
@@ -321,12 +310,17 @@ struct AppDetailView: View {
         }
     }
 
-    private func handlePatch(_ urls: [URL]) {
-        guard let url = urls.first else { return }
+    private func pickPatch() {
+        HADocumentPicker.presentHA { data in
+            guard let data else { return }
+            applyPatch(data)
+        }
+    }
+
+    private func applyPatch(_ data: Data) {
         busy = true
         HAWork.queue.async {
             do {
-                let data = try Data(contentsOf: url)
                 let project = try HAPackageCodec.decode(data)
                 let receipt = try PatchApplyService.apply(project: project) { line in
                     DispatchQueue.main.async { appModel.log(line) }
