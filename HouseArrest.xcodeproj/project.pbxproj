@@ -21,6 +21,8 @@
 		A1000000000000000000000C /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000C /* LogsView.swift */; };
 		A1000000000000000000000D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000D /* SettingsView.swift */; };
 		A1000000000000000000000E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000E /* Assets.xcassets */; };
+		A10000000000000000000010 /* FileImporterRepresentableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000010 /* FileImporterRepresentableView.swift */; };
+		A10000000000000000000011 /* UTType+HA.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000011 /* UTType+HA.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,6 +42,8 @@
 		B1000000000000000000000D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		B1000000000000000000000E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B1000000000000000000000F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B10000000000000000000010 /* FileImporterRepresentableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileImporterRepresentableView.swift; sourceTree = "<group>"; };
+		B10000000000000000000011 /* UTType+HA.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UTType+HA.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -70,6 +74,7 @@
 				E10000000000000000000004 /* Models */,
 				E10000000000000000000005 /* Services */,
 				E10000000000000000000006 /* Views */,
+				E10000000000000000000007 /* Extensions */,
 				B1000000000000000000000E /* Assets.xcassets */,
 				B1000000000000000000000F /* Info.plist */,
 			);
@@ -111,8 +116,17 @@
 				B1000000000000000000000B /* PatchesView.swift */,
 				B1000000000000000000000C /* LogsView.swift */,
 				B1000000000000000000000D /* SettingsView.swift */,
+				B10000000000000000000010 /* FileImporterRepresentableView.swift */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		E10000000000000000000007 /* Extensions */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000011 /* UTType+HA.swift */,
+			);
+			path = Extensions;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -192,6 +206,8 @@
 				A1000000000000000000000B /* PatchesView.swift in Sources */,
 				A1000000000000000000000C /* LogsView.swift in Sources */,
 				A1000000000000000000000D /* SettingsView.swift in Sources */,
+				A10000000000000000000010 /* FileImporterRepresentableView.swift in Sources */,
+				A10000000000000000000011 /* UTType+HA.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
