@@ -27,7 +27,7 @@ enum AppDiscoveryService {
         var byID: [String: InstalledApp] = [:]
 
         progress?("Finding apps", 0, 0)
-        let catalog = HAInstalledAppCatalog() ?? [:]
+        let catalog = HAInstalledAppCatalog()
         merge(catalog, into: &byID, thirdPartyOnly: thirdPartyOnly)
 
         if byID.isEmpty {
@@ -101,34 +101,26 @@ enum AppDiscoveryService {
         var itunesMiss = 0
         var result: [String: InstalledApp] = [:]
 
-        guard isOnline() else {
-            for (id, app) in apps {
-                if let cached = cachedLookup(bundleID: id) {
-                    itunesHit += 1
-                    AppIconStore.set(cached.icon, for: id)
-                    result[id] = InstalledApp(
-                        bundleID: id,
-                        displayName: cached.name,
-                        dataContainerPath: app.dataContainerPath
-                    )
-                    if cached.name.caseInsensitiveCompare(lastComponent(id)) != .orderedSame { named += 1 }
-                    if cached.icon != nil { iconed += 1 }
-                } else {
-                    result[id] = app
-                }
-            }
-            lastProbe = "itunes skipped offline hit=\(itunesHit) named=\(named) icons=\(iconed)"
-            return result
-        }
-
         let total = apps.count
         var index = 0
         for (id, app) in apps {
             index += 1
             progress?("Fetching App Store info", index, total)
+            if let cached = cachedLookup(bundleID: id) {
+                itunesHit += 1
+                AppIconStore.set(cached.icon, for: id)
+                if cached.name.caseInsensitiveCompare(lastComponent(id)) != .orderedSame { named += 1 }
+                if cached.icon != nil { iconed += 1 }
+                result[id] = InstalledApp(
+                    bundleID: id,
+                    displayName: cached.name,
+                    dataContainerPath: app.dataContainerPath
+                )
+                continue
+            }
+
             var name = lastComponent(id)
             var icon: UIImage?
-
             if let store = itunesLookup(bundleID: id) {
                 itunesHit += 1
                 name = store.name
@@ -136,7 +128,6 @@ enum AppDiscoveryService {
             } else {
                 itunesMiss += 1
             }
-
             AppIconStore.set(icon, for: id)
             if name.caseInsensitiveCompare(lastComponent(id)) != .orderedSame { named += 1 }
             if icon != nil { iconed += 1 }
@@ -165,7 +156,6 @@ enum AppDiscoveryService {
 
     private static func itunesLookup(bundleID: String) -> (name: String, icon: UIImage?)? {
         if let cached = cachedLookup(bundleID: bundleID) { return cached }
-
         for country in ["id", "us", ""] {
             var comps = URLComponents(string: "https://itunes.apple.com/lookup")
             var items = [URLQueryItem(name: "bundleId", value: bundleID)]
@@ -173,8 +163,9 @@ enum AppDiscoveryService {
                 items.append(URLQueryItem(name: "country", value: country))
             }
             comps?.queryItems = items
-            guard let url = comps?.url,
-                  let data = try? Data(contentsOf: url),
+            guard let url = comps?.url else { continue }
+            var request = URLRequest(url: url, timeoutInterval: 8)
+            guard let data = try? URLSession.shared.synchronousData(with: request),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let results = json["results"] as? [[String: Any]],
                   let first = results.first
@@ -195,25 +186,9 @@ enum AppDiscoveryService {
         return nil
     }
 
-    private static func isOnline() -> Bool {
-        guard let url = URL(string: "https://itunes.apple.com") else { return false }
-        var request = URLRequest(url: url, timeoutInterval: 2)
-        request.httpMethod = "HEAD"
-        let sem = DispatchSemaphore(value: 0)
-        var ok = false
-        URLSession.shared.dataTask(with: request) { _, response, _ in
-            if let http = response as? HTTPURLResponse, (200..<500).contains(http.statusCode) {
-                ok = true
-            }
-            sem.signal()
-        }.resume()
-        _ = sem.wait(timeout: .now() + 2.5)
-        return ok
-    }
-
     private static func itunesIcon(from urlString: String?) -> UIImage? {
         guard let urlString, let url = URL(string: urlString),
-              let data = try? Data(contentsOf: url)
+              let data = try? URLSession.shared.synchronousData(with: URLRequest(url: url, timeoutInterval: 8))
         else { return nil }
         return usableIcon(UIImage(data: data))
     }
@@ -258,5 +233,22 @@ enum AppDiscoveryService {
             total += Int64(size)
         }
         return total
+    }
+}
+
+private extension URLSession {
+    func synchronousData(with request: URLRequest) throws -> Data {
+        var result: Result<Data, Error> = .failure(URLError(.timedOut))
+        let sem = DispatchSemaphore(value: 0)
+        dataTask(with: request) { data, _, error in
+            if let error {
+                result = .failure(error)
+            } else {
+                result = .success(data ?? Data())
+            }
+            sem.signal()
+        }.resume()
+        _ = sem.wait(timeout: .now() + (request.timeoutInterval + 1))
+        return try result.get()
     }
 }
