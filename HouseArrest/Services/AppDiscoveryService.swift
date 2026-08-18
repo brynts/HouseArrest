@@ -75,6 +75,7 @@ enum AppDiscoveryService {
         if byID[bundleID] != nil { return false }
         var err: NSString?
         guard let path = MCMActivateContainerPath(2, bundleID, false, &err),
+              FileManager.default.fileExists(atPath: path),
               PathSafety.isAppDataRoot(URL(fileURLWithPath: path))
         else { return false }
         byID[bundleID] = InstalledApp(
@@ -98,6 +99,9 @@ enum AppDiscoveryService {
             if path == nil || path?.isEmpty == true {
                 var err: NSString?
                 path = MCMActivateContainerPath(2, bundleID, false, &err)
+            }
+            if let p = path, !FileManager.default.fileExists(atPath: p) {
+                path = nil
             }
             if let p = path, !PathSafety.isAppDataRoot(URL(fileURLWithPath: p)) {
                 path = nil
