@@ -92,7 +92,6 @@ struct PatchesView: View {
             guard ext == "ha" else {
                 throw PatchError.invalidPackage
             }
-            // asCopy: true → already a local copy; still try security scope if present.
             let accessed = url.startAccessingSecurityScopedResource()
             defer { if accessed { url.stopAccessingSecurityScopedResource() } }
 
@@ -125,11 +124,11 @@ struct PatchDetailView: View {
                     }
                 }
             }
-            Section("Rules") {
-                ForEach(project.rules) { rule in
+            Section("Injected files") {
+                ForEach(project.rules) { item in
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(rule.relativePath).font(.subheadline)
-                        Text("\(rule.targetID) · \(rule.replacementData.count) bytes")
+                        Text(item.relativePath).font(.subheadline)
+                        Text("\(item.targetID) · \(item.replacementData.count) bytes")
                             .font(.caption)
                             .foregroundStyle(HATheme.secondaryText)
                     }
