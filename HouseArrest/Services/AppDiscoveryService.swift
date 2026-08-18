@@ -17,6 +17,7 @@ struct ContainerUsage {
 
 enum AppDiscoveryService {
     static var lastProbe = ""
+    private static var itunesCache: [String: (name: String, icon: UIImage?)] = [:]
 
     static func discover(thirdPartyOnly: Bool = true) -> [InstalledApp] {
         lastProbe = ""
@@ -89,30 +90,26 @@ enum AppDiscoveryService {
     }
 
     private static func enrich(_ apps: [String: InstalledApp]) -> [String: InstalledApp] {
-        let wanted = Set(apps.keys)
-        lastProbe = ""
-        let bundles = loadBundleCatalog(matching: wanted)
-        let bundleProbe = lastProbe
         var named = 0
         var iconed = 0
-        var samples: [String] = []
+        var itunesHit = 0
+        var itunesMiss = 0
         var result: [String: InstalledApp] = [:]
 
         for (id, app) in apps {
-            var names: [String] = []
-            if let path = app.dataContainerPath, let meta = readContainerMetadata(path) {
-                names.append(contentsOf: meta.names)
-                if samples.count < 2 {
-                    samples.append("meta \(id) info=\(meta.infoDump)")
-                }
+            var name = lastComponent(id)
+            var icon: UIImage?
+
+            if let store = itunesLookup(bundleID: id) {
+                itunesHit += 1
+                name = store.name
+                icon = store.icon
+            } else {
+                itunesMiss += 1
             }
-            if let bundle = bundles[id] {
-                names.append(contentsOf: bundle.names)
-            }
-            let icon = usableIcon(bundles[id]?.icon)
-            if icon != nil { iconed += 1 }
-            let name = preferredName(bundleID: id, candidates: names)
+
             if name.caseInsensitiveCompare(lastComponent(id)) != .orderedSame { named += 1 }
+            if icon != nil { iconed += 1 }
             result[id] = InstalledApp(
                 bundleID: id,
                 displayName: name,
@@ -121,129 +118,54 @@ enum AppDiscoveryService {
             )
         }
 
-        lastProbe = (["enrich apps=\(apps.count) named=\(named) icons=\(iconed) bundles=\(bundles.count)"] + samples + [bundleProbe])
-            .joined(separator: "\n")
+        lastProbe = "itunes hit=\(itunesHit) miss=\(itunesMiss) named=\(named) icons=\(iconed)"
         return result
     }
 
-    private static func readContainerMetadata(_ container: String) -> (names: [String], infoDump: String)? {
-        let meta = (privatize(container) as NSString).appendingPathComponent(
-            ".com.apple.mobile_container_manager.metadata.plist"
-        )
-        guard let plist = readPlist(at: meta) else { return nil }
-        let dump: String
-        if let info = plist["MCMMetadataInfo"] {
-            dump = describe(info)
-        } else {
-            dump = "no-info"
+    private static func itunesLookup(bundleID: String) -> (name: String, icon: UIImage?)? {
+        if let cached = itunesCache[bundleID] { return cached }
+        if let stored = UserDefaults.standard.string(forKey: "ha.itunes.name.\(bundleID)"),
+           !stored.isEmpty {
+            let icon = itunesIcon(from: UserDefaults.standard.string(forKey: "ha.itunes.art.\(bundleID)"))
+            let value = (stored, icon)
+            itunesCache[bundleID] = value
+            return value
         }
-        return (displayNames(in: plist), dump)
+
+        for country in ["", "id", "us"] {
+            var comps = URLComponents(string: "https://itunes.apple.com/lookup")
+            var items = [URLQueryItem(name: "bundleId", value: bundleID)]
+            if !country.isEmpty {
+                items.append(URLQueryItem(name: "country", value: country))
+            }
+            comps?.queryItems = items
+            guard let url = comps?.url,
+                  let data = try? Data(contentsOf: url),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let results = json["results"] as? [[String: Any]],
+                  let first = results.first
+            else { continue }
+
+            let name = usableName(first["trackName"])
+                ?? usableName(first["trackCensoredName"])
+                ?? lastComponent(bundleID)
+            let art = (first["artworkUrl100"] as? String)
+                ?? (first["artworkUrl512"] as? String)
+                ?? (first["artworkUrl60"] as? String)
+            let icon = itunesIcon(from: art)
+            itunesCache[bundleID] = (name, icon)
+            UserDefaults.standard.set(name, forKey: "ha.itunes.name.\(bundleID)")
+            if let art { UserDefaults.standard.set(art, forKey: "ha.itunes.art.\(bundleID)") }
+            return (name, icon)
+        }
+        return nil
     }
 
-    private static func loadBundleCatalog(matching wanted: Set<String>) -> [String: (names: [String], icon: UIImage?)] {
-        var result: [String: (names: [String], icon: UIImage?)] = [:]
-        guard !wanted.isEmpty else { return result }
-
-        var listed = 0
-        var parsed = 0
-        var samples = 0
-        let root = "/var/containers/Bundle/Application"
-        let lines = listEntries(root) + listEntries(privatize(root))
-        listed = lines.count
-        lastProbe += "\nbundle-list entries=\(lines.count) sample=\(lines.first ?? "")"
-
-        var seen = Set<String>()
-        for line in lines {
-            let raw = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !raw.isEmpty else { continue }
-            let dir = privatize(raw.hasPrefix("/") ? raw : (root as NSString).appendingPathComponent(raw))
-            let uuid = (dir as NSString).lastPathComponent
-            guard UUID(uuidString: uuid) != nil, seen.insert(dir).inserted else { continue }
-
-            let dirGrant = grant(dir)
-            let metaPath = (dir as NSString).appendingPathComponent(
-                ".com.apple.mobile_container_manager.metadata.plist"
-            )
-            let metaGrant = grant(metaPath)
-            let inner = listEntries(dir)
-            let fmKids = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
-
-            if samples < 3 {
-                lastProbe += "\nbundle-uuid \(uuid) dirGrant=\(dirGrant) metaGrant=\(metaGrant) list=\(inner.count) fm=\(fmKids.count) sample=\(inner.first ?? fmKids.first ?? "")"
-                samples += 1
-            }
-
-            if let plist = readPlist(at: metaPath),
-               let bid = usableName(plist["MCMMetadataIdentifier"]),
-               wanted.contains(bid) {
-                var names = displayNames(in: plist)
-                if result[bid] == nil { result[bid] = (names, nil) }
-            }
-
-            if let itunes = readPlist(at: (dir as NSString).appendingPathComponent("iTunesMetadata.plist")),
-               let bid = usableName(itunes["softwareVersionBundleId"]) ?? usableName(itunes["bundleId"]),
-               wanted.contains(bid) {
-                var names = displayNames(in: itunes)
-                if let item = usableName(itunes["itemName"]) { names.insert(item, at: 0) }
-                if var existing = result[bid] {
-                    existing.names.append(contentsOf: names)
-                    result[bid] = existing
-                } else {
-                    result[bid] = (names, nil)
-                }
-            }
-
-            let appCandidates = (inner + fmKids).compactMap { entry -> String? in
-                let name = (entry as NSString).lastPathComponent
-                guard name.hasSuffix(".app") else { return nil }
-                if entry.hasPrefix("/") { return privatize(entry) }
-                return (dir as NSString).appendingPathComponent(name)
-            }
-            for appPath in Set(appCandidates) {
-                guard let parsedApp = readAppBundle(at: appPath) else { continue }
-                parsed += 1
-                guard wanted.contains(parsedApp.id) else { continue }
-                result[parsedApp.id] = (parsedApp.names, parsedApp.icon)
-            }
-        }
-        lastProbe += "\nbundle-scan listed=\(listed) parsed=\(parsed) matched=\(result.count)"
-        return result
-    }
-
-    private static func readAppBundle(at appPath: String) -> (id: String, names: [String], icon: UIImage?)? {
-        _ = grant(appPath)
-        _ = grant((appPath as NSString).appendingPathComponent("Info.plist"))
-        guard let info = readPlist(at: (appPath as NSString).appendingPathComponent("Info.plist")),
-              let bundleID = usableName(info["CFBundleIdentifier"])
+    private static func itunesIcon(from urlString: String?) -> UIImage? {
+        guard let urlString, let url = URL(string: urlString),
+              let data = try? Data(contentsOf: url)
         else { return nil }
-
-        var names = displayNames(in: info)
-        names.append(contentsOf: localizedDisplayNames(in: appPath))
-        return (bundleID, names, pngIcon(in: appPath, info: info))
-    }
-
-    private static func localizedDisplayNames(in appPath: String) -> [String] {
-        let kids = listEntries(appPath)
-        var names: [String] = []
-        for entry in kids where (entry as NSString).lastPathComponent.hasSuffix(".lproj") {
-            let folder = entry.hasPrefix("/") ? privatize(entry) : (appPath as NSString).appendingPathComponent((entry as NSString).lastPathComponent)
-            let stringsPath = (folder as NSString).appendingPathComponent("InfoPlist.strings")
-            if let dict = readPlist(at: stringsPath) {
-                names.append(contentsOf: displayNames(in: dict))
-            }
-        }
-        return names
-    }
-
-    private static func displayNames(in dict: [String: Any]) -> [String] {
-        var names: [String] = []
-        for key in ["CFBundleDisplayName", "CFBundleName", "itemName", "name"] {
-            if let value = usableName(dict[key]) { names.append(value) }
-        }
-        if let info = dict["MCMMetadataInfo"] as? [String: Any] {
-            names.append(contentsOf: displayNames(in: info))
-        }
-        return names
+        return usableIcon(UIImage(data: data))
     }
 
     private static func usableName(_ value: Any?) -> String? {
@@ -253,41 +175,9 @@ enum AppDiscoveryService {
         return trimmed
     }
 
-    private static func pngIcon(in appPath: String, info: [String: Any]) -> UIImage? {
-        var names: [String] = []
-        if let icons = info["CFBundleIcons"] as? [String: Any],
-           let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
-           let list = primary["CFBundleIconFiles"] as? [String] {
-            names.append(contentsOf: list)
-        }
-        if let list = info["CFBundleIconFiles"] as? [String] {
-            names.append(contentsOf: list)
-        }
-        names.append(contentsOf: ["AppIcon60x60@2x", "AppIcon", "Icon@2x", "Icon"])
-        for name in names {
-            let base = (name as NSString).deletingPathExtension
-            for file in [name, base + ".png", base + "@2x.png", base + "@3x.png"] {
-                let path = (appPath as NSString).appendingPathComponent(file)
-                _ = grant(path)
-                if let image = usableIcon(UIImage(contentsOfFile: path)) {
-                    return image
-                }
-            }
-        }
-        return nil
-    }
-
     private static func usableIcon(_ image: UIImage?) -> UIImage? {
         guard let image, image.size.width >= 16, image.size.height >= 16 else { return nil }
         return image
-    }
-
-    private static func readPlist(at path: String) -> [String: Any]? {
-        _ = grant(path)
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
-              let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any]
-        else { return nil }
-        return plist
     }
 
     @discardableResult
@@ -296,39 +186,6 @@ enum AppDiscoveryService {
         let handle = bad_query(&pathC, true, nil, false)
         if handle >= 0 { bad_query_release(handle) }
         return handle
-    }
-
-    private static func listEntries(_ path: String) -> [String] {
-        var pathC = Array(path.utf8CString)
-        guard let raw = bad_query_list(&pathC, 200_000) else { return [] }
-        let text = String(cString: raw)
-        free(raw)
-        return text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-    }
-
-    private static func privatize(_ path: String) -> String {
-        if path.hasPrefix("/var/") && !path.hasPrefix("/private/") {
-            return "/private" + path
-        }
-        return path
-    }
-
-    private static func describe(_ value: Any) -> String {
-        if let dict = value as? [String: Any] {
-            return "dict[\(dict.keys.sorted().joined(separator: ","))]"
-        }
-        return String(describing: type(of: value))
-    }
-
-    private static func preferredName(bundleID: String, candidates: [String]) -> String {
-        let tail = lastComponent(bundleID)
-        for raw in candidates {
-            guard let value = usableName(raw) else { continue }
-            if value.caseInsensitiveCompare(bundleID) == .orderedSame { continue }
-            if value.caseInsensitiveCompare(tail) == .orderedSame { continue }
-            return value
-        }
-        return tail
     }
 
     private static func lastComponent(_ bundleID: String) -> String {
