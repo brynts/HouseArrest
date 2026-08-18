@@ -1,6 +1,10 @@
 import Foundation
 import UIKit
 
+enum HAWork {
+    static let queue = DispatchQueue(label: "ha.work")
+}
+
 struct ContainerUsage {
     var documents: Int64 = 0
     var caches: Int64 = 0
@@ -17,15 +21,21 @@ struct ContainerUsage {
 
 enum AppDiscoveryService {
     static var lastProbe = ""
+    private static var cachedApps: [InstalledApp] = []
     private static var itunesCache: [String: (name: String, icon: UIImage?)] = [:]
 
     static func discover(
         thirdPartyOnly: Bool = true,
         progress: ((String, Int, Int) -> Void)? = nil
     ) -> [InstalledApp] {
+        if !cachedApps.isEmpty {
+            lastProbe = "catalog cached apps=\(cachedApps.count)"
+            progress?("Using cached apps", cachedApps.count, cachedApps.count)
+            return cachedApps
+        }
+
         lastProbe = ""
         var byID: [String: InstalledApp] = [:]
-
         progress?("Finding apps", 0, 0)
         let catalog = HAInstalledAppCatalog()
         merge(catalog, into: &byID, thirdPartyOnly: thirdPartyOnly)
@@ -45,9 +55,11 @@ enum AppDiscoveryService {
             }
         }
 
-        return enrich(byID, progress: progress).values.sorted {
+        let result = enrich(byID, progress: progress).values.sorted {
             $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
         }
+        cachedApps = result
+        return result
     }
 
     static func usage(for path: String) -> ContainerUsage {
@@ -100,25 +112,11 @@ enum AppDiscoveryService {
         var itunesHit = 0
         var itunesMiss = 0
         var result: [String: InstalledApp] = [:]
-
         let total = apps.count
         var index = 0
         for (id, app) in apps {
             index += 1
             progress?("Fetching App Store info", index, total)
-            if let cached = cachedLookup(bundleID: id) {
-                itunesHit += 1
-                AppIconStore.set(cached.icon, for: id)
-                if cached.name.caseInsensitiveCompare(lastComponent(id)) != .orderedSame { named += 1 }
-                if cached.icon != nil { iconed += 1 }
-                result[id] = InstalledApp(
-                    bundleID: id,
-                    displayName: cached.name,
-                    dataContainerPath: app.dataContainerPath
-                )
-                continue
-            }
-
             var name = lastComponent(id)
             var icon: UIImage?
             if let store = itunesLookup(bundleID: id) {
@@ -137,12 +135,11 @@ enum AppDiscoveryService {
                 dataContainerPath: app.dataContainerPath
             )
         }
-
         lastProbe = "itunes hit=\(itunesHit) miss=\(itunesMiss) named=\(named) icons=\(iconed)"
         return result
     }
 
-    private static func cachedLookup(bundleID: String) -> (name: String, icon: UIImage?)? {
+    private static func itunesLookup(bundleID: String) -> (name: String, icon: UIImage?)? {
         if let cached = itunesCache[bundleID] { return cached }
         if let stored = UserDefaults.standard.string(forKey: "ha.itunes.name.\(bundleID)"),
            !stored.isEmpty {
@@ -151,11 +148,6 @@ enum AppDiscoveryService {
             itunesCache[bundleID] = value
             return value
         }
-        return nil
-    }
-
-    private static func itunesLookup(bundleID: String) -> (name: String, icon: UIImage?)? {
-        if let cached = cachedLookup(bundleID: bundleID) { return cached }
         for country in ["id", "us", ""] {
             var comps = URLComponents(string: "https://itunes.apple.com/lookup")
             var items = [URLQueryItem(name: "bundleId", value: bundleID)]
@@ -170,7 +162,6 @@ enum AppDiscoveryService {
                   let results = json["results"] as? [[String: Any]],
                   let first = results.first
             else { continue }
-
             let name = usableName(first["trackName"])
                 ?? usableName(first["trackCensoredName"])
                 ?? lastComponent(bundleID)
