@@ -5,15 +5,15 @@ struct RootTabView: View {
 
     var body: some View {
         TabView(selection: $appModel.selectedTab) {
-            HomeView()
-                .tabItem { Label("Home", systemImage: "house.fill") }
-                .tag(AppTab.home)
-
-            AppsView()
-                .tabItem { Label("Apps", systemImage: "square.grid.2x2.fill") }
-                .tag(AppTab.apps)
+            Tab("Home", systemImage: "house.fill", value: AppTab.home) {
+                HomeView()
+            }
+            Tab("Apps", systemImage: "square.grid.2x2.fill", value: AppTab.apps) {
+                AppsView()
+            }
         }
         .tint(HATheme.accent)
+        .tabBarMinimizeBehavior(.onScrollDown)
     }
 }
 

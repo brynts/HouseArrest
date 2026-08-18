@@ -10,14 +10,12 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     header
-
                     statusCard
-
                     deviceCard
                 }
                 .padding(16)
             }
-            .background(Color.black.ignoresSafeArea())
+            .background(HATheme.screen.ignoresSafeArea())
             .navigationBarHidden(true)
             .sheet(isPresented: $showLogs) { LogsView() }
             .sheet(isPresented: $showSettings) { SettingsView() }
@@ -28,7 +26,6 @@ struct HomeView: View {
         HStack(alignment: .center) {
             Text("HouseArrest")
                 .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
 
             Spacer()
 
@@ -37,7 +34,7 @@ struct HomeView: View {
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(HATheme.accent)
                     .frame(width: 36, height: 36)
-                    .background(HATheme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .accessibilityLabel("Logs")
 
@@ -46,7 +43,7 @@ struct HomeView: View {
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(HATheme.accent)
                     .frame(width: 36, height: 36)
-                    .background(HATheme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .accessibilityLabel("Settings")
         }
@@ -83,7 +80,6 @@ struct HomeView: View {
                 .foregroundStyle(HATheme.secondaryText)
             Text(value)
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(.white)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -97,12 +93,11 @@ struct HomeView: View {
                 .padding(.bottom, 10)
 
             row("Hardware model", d.hardwareModel)
-            Divider().background(HATheme.cardStroke)
+            Divider()
             row("iOS Version", "\(d.systemVersion) (\(d.buildNumber))")
-            Divider().background(HATheme.cardStroke)
+            Divider()
             HStack {
                 Text("Compatibility")
-                    .foregroundStyle(.white)
                 Spacer()
                 if d.isSupported {
                     Label("Supported", systemImage: "checkmark.circle.fill")
@@ -130,7 +125,7 @@ struct HomeView: View {
 
     private func row(_ title: String, _ value: String) -> some View {
         HStack {
-            Text(title).foregroundStyle(.white)
+            Text(title)
             Spacer()
             Text(value).foregroundStyle(HATheme.secondaryText)
         }
