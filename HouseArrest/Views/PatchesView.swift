@@ -1,22 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-enum HADocumentTypes {
-    /// Accept .ha plus generic data so the document picker can select packages.
-    static var importTypes: [UTType] {
-        var types: [UTType] = [
-            UTType(exportedAs: "app.housearrest.package"),
-            .data,
-            .item,
-            .content
-        ]
-        if let ha = UTType(filenameExtension: "ha") {
-            types.insert(ha, at: 0)
-        }
-        return types
-    }
-}
-
 struct PatchesView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var showImporter = false
@@ -66,12 +50,15 @@ struct PatchesView: View {
                     }
                 }
             }
-            .fileImporter(
-                isPresented: $showImporter,
-                allowedContentTypes: HADocumentTypes.importTypes,
-                allowsMultipleSelection: false
-            ) { result in
-                handleImport(result)
+            .sheet(isPresented: $showImporter) {
+                FileImporterRepresentableView(
+                    allowedContentTypes: [.haPackage],
+                    allowsMultipleSelection: false
+                ) { urls in
+                    showImporter = false
+                    handleImport(urls)
+                }
+                .ignoresSafeArea()
             }
             .sheet(isPresented: $showNew) {
                 NewPatchSheet { project in
@@ -98,16 +85,16 @@ struct PatchesView: View {
         }
     }
 
-    private func handleImport(_ result: Result<[URL], Error>) {
+    private func handleImport(_ urls: [URL]) {
+        guard let url = urls.first else { return }
         do {
-            guard let url = try result.get().first else { return }
-            let accessed = url.startAccessingSecurityScopedResource()
-            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-
             let ext = url.pathExtension.lowercased()
-            guard ext == "ha" || ext.isEmpty else {
+            guard ext == "ha" else {
                 throw PatchError.invalidPackage
             }
+            // asCopy: true → already a local copy; still try security scope if present.
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
 
             let data = try Data(contentsOf: url)
             let project = try HAPackageCodec.decode(data)
