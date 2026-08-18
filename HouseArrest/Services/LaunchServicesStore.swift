@@ -2,6 +2,7 @@ import Foundation
 
 enum LaunchServicesStore {
     private(set) static var lastProbe = ""
+    private static var knownCachePaths: [String] = []
 
     static func identifiers() -> [String] {
         var probe: [String] = []
@@ -28,27 +29,61 @@ enum LaunchServicesStore {
             let names = (try? FileManager.default.contentsOfDirectory(atPath: cache)) ?? []
             probe.append("cache \(cache) grant=\(handle) files=\(names.count)")
             defer { if handle >= 0 { bad_query_release(handle) } }
-
-            for name in names {
-                guard name.hasPrefix("com.apple.LaunchServices-"),
-                      name.hasSuffix("-v2.csstore") else { continue }
-                let store = (cache as NSString).appendingPathComponent(name)
-                guard let data = try? Data(contentsOf: URL(fileURLWithPath: store)) else {
-                    probe.append("store \(name) unreadable")
-                    continue
-                }
-                let extracted = extractIdentifiers(from: data)
-                var added = 0
-                for id in extracted where seen.insert(id).inserted {
-                    ids.append(id)
-                    added += 1
-                }
-                probe.append("store \(name) bytes=\(data.count) extracted=\(extracted.count) new=\(added)")
-            }
+            if names.isEmpty == false { knownCachePaths.append(cache) }
+            ids.append(contentsOf: collectIDs(in: cache, names: names, seen: &seen, probe: &probe))
         }
 
         probe.append("ls-store total identifiers=\(ids.count)")
         lastProbe = probe.joined(separator: "\n")
+        return ids
+    }
+
+    /// Re-read already-accessible Launch Services stores. No second bad_query.
+    static func identifiersIfReadable() -> [String] {
+        var probe: [String] = []
+        var seen = Set<String>()
+        var ids: [String] = []
+        var paths = knownCachePaths
+        if paths.isEmpty {
+            paths = [
+                "/private/var/mobile/Library/Caches",
+                "/var/mobile/Library/Caches",
+                "/var/db/lsd"
+            ]
+        }
+        for cache in paths {
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: cache)) ?? []
+            probe.append("refresh cache \(cache) files=\(names.count)")
+            ids.append(contentsOf: collectIDs(in: cache, names: names, seen: &seen, probe: &probe))
+        }
+        probe.append("ls-store refresh identifiers=\(ids.count)")
+        lastProbe = probe.joined(separator: "\n")
+        return ids
+    }
+
+    private static func collectIDs(
+        in cache: String,
+        names: [String],
+        seen: inout Set<String>,
+        probe: inout [String]
+    ) -> [String] {
+        var ids: [String] = []
+        for name in names {
+            guard name.hasPrefix("com.apple.LaunchServices-"),
+                  name.hasSuffix("-v2.csstore") else { continue }
+            let store = (cache as NSString).appendingPathComponent(name)
+            guard let data = try? Data(contentsOf: URL(fileURLWithPath: store)) else {
+                probe.append("store \(name) unreadable")
+                continue
+            }
+            let extracted = extractIdentifiers(from: data)
+            var added = 0
+            for id in extracted where seen.insert(id).inserted {
+                ids.append(id)
+                added += 1
+            }
+            probe.append("store \(name) bytes=\(data.count) extracted=\(extracted.count) new=\(added)")
+        }
         return ids
     }
 
