@@ -179,8 +179,9 @@ enum AppDiscoveryService {
 
     private static func icon(in appPath: String, info: [String: Any]) -> UIImage? {
         var names: [String] = []
-        if let files = (info["CFBundleIcons"] as? [String: Any])? ["CFBundlePrimaryIcon"] as? [String: Any],
-           let list = files["CFBundleIconFiles"] as? [String] {
+        if let icons = info["CFBundleIcons"] as? [String: Any],
+           let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
+           let list = primary["CFBundleIconFiles"] as? [String] {
             names.append(contentsOf: list)
         }
         if let list = info["CFBundleIconFiles"] as? [String] {
