@@ -2,13 +2,15 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 enum HADocumentTypes {
-    /// Custom type for .ha packages (also accept generic data so picker is not empty).
+    /// Accept .ha plus generic data so the document picker can select packages.
     static var importTypes: [UTType] {
-        var types: [UTType] = [.data, .item, .content]
+        var types: [UTType] = [
+            UTType(exportedAs: "app.housearrest.package"),
+            .data,
+            .item,
+            .content
+        ]
         if let ha = UTType(filenameExtension: "ha") {
-            types.insert(ha, at: 0)
-        }
-        if let ha = UTType(exportedAs: "app.housearrest.package") {
             types.insert(ha, at: 0)
         }
         return types
