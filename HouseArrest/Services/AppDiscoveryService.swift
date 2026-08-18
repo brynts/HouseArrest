@@ -47,10 +47,7 @@ enum AppDiscoveryService {
     }
 
     static func usage(for path: String) -> ContainerUsage {
-        var pathC = Array(path.utf8CString)
-        let handle = bad_query(&pathC, true, nil, false)
-        defer { if handle >= 0 { bad_query_release(handle) } }
-
+        _ = grant(path)
         let root = path as NSString
         return ContainerUsage(
             documents: directorySize(at: root.appendingPathComponent("Documents")),
@@ -105,19 +102,17 @@ enum AppDiscoveryService {
             var names: [String] = []
             if let path = app.dataContainerPath, let meta = readContainerMetadata(path) {
                 names.append(contentsOf: meta.names)
-                if samples.count < 3 {
-                    samples.append("meta \(id) info=\(meta.infoDump) names=\(meta.names.joined(separator: "|"))")
+                if samples.count < 2 {
+                    samples.append("meta \(id) info=\(meta.infoDump)")
                 }
             }
             if let bundle = bundles[id] {
                 names.append(contentsOf: bundle.names)
             }
-
             let icon = usableIcon(bundles[id]?.icon)
             if icon != nil { iconed += 1 }
             let name = preferredName(bundleID: id, candidates: names)
             if name.caseInsensitiveCompare(lastComponent(id)) != .orderedSame { named += 1 }
-
             result[id] = InstalledApp(
                 bundleID: id,
                 displayName: name,
@@ -132,13 +127,15 @@ enum AppDiscoveryService {
     }
 
     private static func readContainerMetadata(_ container: String) -> (names: [String], infoDump: String)? {
-        let meta = (container as NSString).appendingPathComponent(
+        let meta = (privatize(container) as NSString).appendingPathComponent(
             ".com.apple.mobile_container_manager.metadata.plist"
         )
         guard let plist = readPlist(at: meta) else { return nil }
-        var dump = "nil"
+        let dump: String
         if let info = plist["MCMMetadataInfo"] {
             dump = describe(info)
+        } else {
+            dump = "no-info"
         }
         return (displayNames(in: plist), dump)
     }
@@ -147,51 +144,66 @@ enum AppDiscoveryService {
         var result: [String: (names: [String], icon: UIImage?)] = [:]
         guard !wanted.isEmpty else { return result }
 
-        let roots = [
-            "/var/containers/Bundle/Application",
-            "/private/var/containers/Bundle/Application"
-        ]
         var listed = 0
         var parsed = 0
-        for root in roots {
-            var rootC = Array(root.utf8CString)
-            guard let raw = bad_query_list(&rootC, 400_000) else {
-                lastProbe += "\nbundle-list \(root) NULL"
-                continue
+        var samples = 0
+        let root = "/var/containers/Bundle/Application"
+        let lines = listEntries(root) + listEntries(privatize(root))
+        listed = lines.count
+        lastProbe += "\nbundle-list entries=\(lines.count) sample=\(lines.first ?? "")"
+
+        var seen = Set<String>()
+        for line in lines {
+            let raw = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !raw.isEmpty else { continue }
+            let dir = privatize(raw.hasPrefix("/") ? raw : (root as NSString).appendingPathComponent(raw))
+            let uuid = (dir as NSString).lastPathComponent
+            guard UUID(uuidString: uuid) != nil, seen.insert(dir).inserted else { continue }
+
+            let dirGrant = grant(dir)
+            let metaPath = (dir as NSString).appendingPathComponent(
+                ".com.apple.mobile_container_manager.metadata.plist"
+            )
+            let metaGrant = grant(metaPath)
+            let inner = listEntries(dir)
+            let fmKids = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
+
+            if samples < 3 {
+                lastProbe += "\nbundle-uuid \(uuid) dirGrant=\(dirGrant) metaGrant=\(metaGrant) list=\(inner.count) fm=\(fmKids.count) sample=\(inner.first ?? fmKids.first ?? "")"
+                samples += 1
             }
-            let text = String(cString: raw)
-            free(raw)
-            let lines = text.split(separator: "\n").map(String.init)
-            listed += lines.count
-            lastProbe += "\nbundle-list \(root) entries=\(lines.count) sample=\(lines.first ?? "")"
 
-            for line in lines {
-                let dir = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !dir.isEmpty, UUID(uuidString: (dir as NSString).lastPathComponent) != nil else { continue }
-                var dirC = Array(dir.utf8CString)
-                let handle = bad_query(&dirC, true, nil, false)
-                let children = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
-                if handle >= 0 { bad_query_release(handle) }
+            if let plist = readPlist(at: metaPath),
+               let bid = usableName(plist["MCMMetadataIdentifier"]),
+               wanted.contains(bid) {
+                var names = displayNames(in: plist)
+                if result[bid] == nil { result[bid] = (names, nil) }
+            }
 
-                if let itunes = readPlist(at: (dir as NSString).appendingPathComponent("iTunesMetadata.plist")),
-                   let bid = usableName(itunes["softwareVersionBundleId"]) ?? usableName(itunes["bundleId"]),
-                   wanted.contains(bid) {
-                    var names = displayNames(in: itunes)
-                    if let item = usableName(itunes["itemName"]) { names.insert(item, at: 0) }
-                    if var existing = result[bid] {
-                        existing.names.append(contentsOf: names)
-                        result[bid] = existing
-                    } else {
-                        result[bid] = (names, nil)
-                    }
+            if let itunes = readPlist(at: (dir as NSString).appendingPathComponent("iTunesMetadata.plist")),
+               let bid = usableName(itunes["softwareVersionBundleId"]) ?? usableName(itunes["bundleId"]),
+               wanted.contains(bid) {
+                var names = displayNames(in: itunes)
+                if let item = usableName(itunes["itemName"]) { names.insert(item, at: 0) }
+                if var existing = result[bid] {
+                    existing.names.append(contentsOf: names)
+                    result[bid] = existing
+                } else {
+                    result[bid] = (names, nil)
                 }
+            }
 
-                for child in children where child.hasSuffix(".app") {
-                    let appPath = (dir as NSString).appendingPathComponent(child)
-                    guard let parsedApp = readAppBundle(at: appPath), wanted.contains(parsedApp.id) else { continue }
-                    parsed += 1
-                    result[parsedApp.id] = (parsedApp.names, parsedApp.icon)
-                }
+            let appCandidates = (inner + fmKids).compactMap { entry -> String? in
+                let name = (entry as NSString).lastPathComponent
+                guard name.hasSuffix(".app") else { return nil }
+                if entry.hasPrefix("/") { return privatize(entry) }
+                return (dir as NSString).appendingPathComponent(name)
+            }
+            for appPath in Set(appCandidates) {
+                guard let parsedApp = readAppBundle(at: appPath) else { continue }
+                parsed += 1
+                guard wanted.contains(parsedApp.id) else { continue }
+                result[parsedApp.id] = (parsedApp.names, parsedApp.icon)
             }
         }
         lastProbe += "\nbundle-scan listed=\(listed) parsed=\(parsed) matched=\(result.count)"
@@ -199,10 +211,8 @@ enum AppDiscoveryService {
     }
 
     private static func readAppBundle(at appPath: String) -> (id: String, names: [String], icon: UIImage?)? {
-        var pathC = Array(appPath.utf8CString)
-        let handle = bad_query(&pathC, true, nil, false)
-        defer { if handle >= 0 { bad_query_release(handle) } }
-
+        _ = grant(appPath)
+        _ = grant((appPath as NSString).appendingPathComponent("Info.plist"))
         guard let info = readPlist(at: (appPath as NSString).appendingPathComponent("Info.plist")),
               let bundleID = usableName(info["CFBundleIdentifier"])
         else { return nil }
@@ -213,13 +223,12 @@ enum AppDiscoveryService {
     }
 
     private static func localizedDisplayNames(in appPath: String) -> [String] {
-        let children = (try? FileManager.default.contentsOfDirectory(atPath: appPath)) ?? []
+        let kids = listEntries(appPath)
         var names: [String] = []
-        for child in children where child.hasSuffix(".lproj") {
-            let stringsPath = ((appPath as NSString)
-                .appendingPathComponent(child) as NSString)
-                .appendingPathComponent("InfoPlist.strings")
-            if let dict = NSDictionary(contentsOfFile: stringsPath) as? [String: Any] {
+        for entry in kids where (entry as NSString).lastPathComponent.hasSuffix(".lproj") {
+            let folder = entry.hasPrefix("/") ? privatize(entry) : (appPath as NSString).appendingPathComponent((entry as NSString).lastPathComponent)
+            let stringsPath = (folder as NSString).appendingPathComponent("InfoPlist.strings")
+            if let dict = readPlist(at: stringsPath) {
                 names.append(contentsOf: displayNames(in: dict))
             }
         }
@@ -258,7 +267,9 @@ enum AppDiscoveryService {
         for name in names {
             let base = (name as NSString).deletingPathExtension
             for file in [name, base + ".png", base + "@2x.png", base + "@3x.png"] {
-                if let image = usableIcon(UIImage(contentsOfFile: (appPath as NSString).appendingPathComponent(file))) {
+                let path = (appPath as NSString).appendingPathComponent(file)
+                _ = grant(path)
+                if let image = usableIcon(UIImage(contentsOfFile: path)) {
                     return image
                 }
             }
@@ -272,24 +283,39 @@ enum AppDiscoveryService {
     }
 
     private static func readPlist(at path: String) -> [String: Any]? {
-        var pathC = Array(path.utf8CString)
-        let handle = bad_query(&pathC, true, nil, false)
-        defer { if handle >= 0 { bad_query_release(handle) } }
+        _ = grant(path)
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
               let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any]
         else { return nil }
         return plist
     }
 
+    @discardableResult
+    private static func grant(_ path: String) -> Int64 {
+        var pathC = Array(path.utf8CString)
+        let handle = bad_query(&pathC, true, nil, false)
+        if handle >= 0 { bad_query_release(handle) }
+        return handle
+    }
+
+    private static func listEntries(_ path: String) -> [String] {
+        var pathC = Array(path.utf8CString)
+        guard let raw = bad_query_list(&pathC, 200_000) else { return [] }
+        let text = String(cString: raw)
+        free(raw)
+        return text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    }
+
+    private static func privatize(_ path: String) -> String {
+        if path.hasPrefix("/var/") && !path.hasPrefix("/private/") {
+            return "/private" + path
+        }
+        return path
+    }
+
     private static func describe(_ value: Any) -> String {
         if let dict = value as? [String: Any] {
             return "dict[\(dict.keys.sorted().joined(separator: ","))]"
-        }
-        if let array = value as? [Any] {
-            return "array(\(array.count))"
-        }
-        if let string = value as? String {
-            return "str:\(string.prefix(60))"
         }
         return String(describing: type(of: value))
     }
