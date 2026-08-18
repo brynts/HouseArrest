@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import Darwin
 
 enum HAWork {
     static let queue = DispatchQueue(label: "ha.work")
@@ -97,7 +98,7 @@ enum AppDiscoveryService {
             if knownPaths.contains(normalized) { continue }
             _ = GrantCache.grantOnce(path: folder)
             guard let bundleID = bundleID(fromContainer: folder) else {
-                HALog.write("refresh skip no-id \(folder)")
+                HALog.write("refresh skip no-id \((folder as NSString).lastPathComponent)")
                 continue
             }
             if thirdPartyOnly && isSystemBundle(bundleID) { continue }
@@ -183,7 +184,7 @@ enum AppDiscoveryService {
                 var pathC = Array(parent.utf8CString)
                 if let listed = bad_query_list(&pathC, 400000) {
                     let blob = String(cString: listed)
-                    listed.deallocate()
+                    free(listed)
                     names = blob.split(whereSeparator: \.isNewline).map { line in
                         URL(fileURLWithPath: String(line)).lastPathComponent
                     }
