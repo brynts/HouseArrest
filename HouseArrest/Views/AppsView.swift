@@ -127,7 +127,7 @@ struct AppsView: View {
         if isLoading { return }
         isLoading = true
         errorText = nil
-        scanTitle = "Checking for new apps"
+        scanTitle = "Finding apps"
         scanCurrent = 0
         scanTotal = 0
         HAWork.queue.async {
