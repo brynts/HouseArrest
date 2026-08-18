@@ -5,12 +5,14 @@ enum AppCleanService {
         case documents
         case caches
         case tmp
+        case preferences
 
         var title: String {
             switch self {
             case .documents: return "Documents"
             case .caches: return "Caches"
             case .tmp: return "tmp"
+            case .preferences: return "Preferences"
             }
         }
 
@@ -20,9 +22,12 @@ enum AppCleanService {
             case .documents: return root.appendingPathComponent("Documents")
             case .caches: return root.appendingPathComponent("Library/Caches")
             case .tmp: return root.appendingPathComponent("tmp")
+            case .preferences: return root.appendingPathComponent("Library/Preferences")
             }
         }
     }
+
+    static let resetAreas: [Area] = [.documents, .caches, .tmp, .preferences]
 
     static func clean(
         bundleID: String,

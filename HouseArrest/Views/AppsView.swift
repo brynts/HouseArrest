@@ -138,6 +138,7 @@ struct AppDetailView: View {
         let title: String
         let detail: String
         let areas: [AppCleanService.Area]
+        let confirmTitle: String
     }
 
     var body: some View {
@@ -207,18 +208,19 @@ struct AppDetailView: View {
                 }
                 Button(role: .destructive) {
                     pending = PendingClean(
-                        title: "Reset app data?",
-                        detail: "Deletes Documents, Caches, and tmp for \(app.displayName). Preferences stay.",
-                        areas: [.documents, .caches, .tmp]
+                        title: "Reset all data?",
+                        detail: "Deletes Documents, Caches, tmp, and Preferences for \(app.displayName). Login and settings are wiped.",
+                        areas: AppCleanService.resetAreas,
+                        confirmTitle: "Reset all"
                     )
                 } label: {
-                    Label("Reset app data", systemImage: "arrow.counterclockwise")
+                    Label("Reset all", systemImage: "arrow.counterclockwise")
                 }
                 .disabled(busy || app.dataContainerPath == nil)
             } header: {
                 Text("Data")
             } footer: {
-                Text(busy ? "Working…" : "Clean only empties Documents, Caches, and tmp.")
+                Text(busy ? "Working…" : "Clean: Documents, Caches, tmp. Reset all also wipes Preferences.")
             }
         }
         .navigationTitle(app.displayName)
@@ -240,7 +242,7 @@ struct AppDetailView: View {
             ),
             titleVisibility: .visible
         ) {
-            Button("Clean", role: .destructive) {
+            Button(pending?.confirmTitle ?? "Clean", role: .destructive) {
                 if let pending { runClean(pending.areas) }
             }
             Button("Cancel", role: .cancel) { pending = nil }
@@ -279,7 +281,8 @@ struct AppDetailView: View {
         pending = PendingClean(
             title: "Clean \(area.title)?",
             detail: "Deletes files in \(area.title) for \(app.displayName).",
-            areas: [area]
+            areas: [area],
+            confirmTitle: "Clean"
         )
     }
 
