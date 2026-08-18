@@ -23,6 +23,7 @@ struct ContainerBrowserView: View {
 
     @State private var roots: [BrowseRoot] = []
     @State private var loading = true
+    @State private var loaded = false
     @State private var customID = ""
     @State private var askGroup = false
     @State private var errorText: String?
@@ -31,7 +32,7 @@ struct ContainerBrowserView: View {
         List {
             Section("App data") {
                 if let data = roots.first(where: { !$0.isGroup }) {
-                    NavigationLink(data.title) {
+                    NavigationLink {
                         FolderBrowserView(
                             title: data.title,
                             targetID: data.targetID,
@@ -39,6 +40,8 @@ struct ContainerBrowserView: View {
                             currentPath: data.path,
                             isGroup: false
                         )
+                    } label: {
+                        Text(data.title)
                     }
                 } else {
                     Text("Container unavailable")
@@ -48,7 +51,7 @@ struct ContainerBrowserView: View {
 
             Section {
                 ForEach(roots.filter(\.isGroup)) { group in
-                    NavigationLink(group.title) {
+                    NavigationLink {
                         FolderBrowserView(
                             title: group.title,
                             targetID: group.targetID,
@@ -56,13 +59,15 @@ struct ContainerBrowserView: View {
                             currentPath: group.path,
                             isGroup: true
                         )
+                    } label: {
+                        Text(group.title)
                     }
                 }
                 Button("Open group ID…") { askGroup = true }
             } header: {
                 Text("App Groups")
             } footer: {
-                Text("If a group is missing, enter its ID (example: group.woodsign.widgy).")
+                Text("Groups are opened by ID (example: group.woodsign.widgy), then remembered for this app.")
             }
         }
         .navigationTitle("Browse")
@@ -91,13 +96,15 @@ struct ContainerBrowserView: View {
     }
 
     private func loadRoots() {
+        if loaded { return }
+        loaded = true
         loading = true
         let bundleID = app.bundleID
         let dataPath = app.dataContainerPath
         HAWork.queue.async {
             var next: [BrowseRoot] = []
             if let dataPath {
-                _ = GrantCache.grantOnce(path: dataPath)
+                settleGrant(path: dataPath, groupID: nil)
                 next.append(BrowseRoot(
                     title: bundleID,
                     targetID: bundleID,
@@ -105,16 +112,15 @@ struct ContainerBrowserView: View {
                     isGroup: false
                 ))
             }
-            for groupID in AppGroupLookup.candidates(for: bundleID) {
+            for groupID in AppGroupLookup.remembered(for: bundleID) {
                 if let path = AppGroupLookup.resolve(groupID) {
-                    _ = GrantCache.grantOnce(path: path, groupID: groupID)
+                    settleGrant(path: path, groupID: groupID)
                     next.append(BrowseRoot(
                         title: groupID,
                         targetID: groupID,
                         path: path,
                         isGroup: true
                     ))
-                    AppGroupLookup.remember(groupID, for: bundleID)
                 }
             }
             DispatchQueue.main.async {
@@ -136,7 +142,7 @@ struct ContainerBrowserView: View {
                 }
                 return
             }
-            _ = GrantCache.grantOnce(path: path, groupID: id)
+            settleGrant(path: path, groupID: id)
             AppGroupLookup.remember(id, for: app.bundleID)
             let root = BrowseRoot(title: id, targetID: id, path: path, isGroup: true)
             DispatchQueue.main.async {
@@ -160,6 +166,7 @@ struct FolderBrowserView: View {
 
     @State private var items: [BrowseItem] = []
     @State private var loading = true
+    @State private var loaded = false
     @State private var errorText: String?
     @State private var shareURL: URL?
 
@@ -175,7 +182,15 @@ struct FolderBrowserView: View {
             } else {
                 List(items) { item in
                     if item.isDirectory {
-                        NavigationLink(value: item.path) {
+                        NavigationLink {
+                            FolderBrowserView(
+                                title: item.name,
+                                targetID: targetID,
+                                rootPath: rootPath,
+                                currentPath: item.path,
+                                isGroup: isGroup
+                            )
+                        } label: {
                             row(item)
                         }
                     } else {
@@ -185,15 +200,6 @@ struct FolderBrowserView: View {
                             row(item)
                         }
                     }
-                }
-                .navigationDestination(for: String.self) { path in
-                    FolderBrowserView(
-                        title: URL(fileURLWithPath: path).lastPathComponent,
-                        targetID: targetID,
-                        rootPath: rootPath,
-                        currentPath: path,
-                        isGroup: isGroup
-                    )
                 }
             }
         }
@@ -226,16 +232,19 @@ struct FolderBrowserView: View {
     }
 
     private func load() {
+        if loaded { return }
+        loaded = true
         loading = true
         let path = currentPath
         let groupID = isGroup ? targetID : nil
         HAWork.queue.async {
-            _ = GrantCache.grantOnce(path: rootPath, groupID: groupID)
+            settleGrant(path: rootPath, groupID: groupID)
             do {
                 let listed = try ContainerLister.list(path: path, rootPath: rootPath)
                 DispatchQueue.main.async {
                     items = listed
                     loading = false
+                    appModel.log("browse list \(path) items=\(listed.count)")
                 }
             } catch {
                 DispatchQueue.main.async {
@@ -262,30 +271,16 @@ struct FolderBrowserView: View {
 }
 
 enum AppGroupLookup {
-    static func candidates(for bundleID: String) -> [String] {
-        var ids = remembered(for: bundleID)
-        ids.append("group.\(bundleID)")
-        ids.append("group.\(bundleID.lowercased())")
-        let parts = bundleID.split(separator: ".").map(String.init)
-        if parts.count >= 2 {
-            let vendor = parts[0]
-            let name = parts[1]
-            ids.append("group.\(vendor).\(name)")
-            ids.append("group.\(vendor).\(name.lowercased())")
-            if parts.count >= 3 {
-                ids.append("group.\(vendor).\(parts[1]).\(parts[2])")
-            }
-        }
-        var seen = Set<String>()
-        return ids.filter { seen.insert($0).inserted }
-    }
-
     static func resolve(_ groupID: String) -> String? {
-        let attempts: [(UInt64, Bool)] = [(7, true), (7, false), (2, true), (1, true)]
-        for (cls, asGroup) in attempts {
-            var err: NSString?
-            guard let path = MCMActivateContainerPath(cls, groupID, asGroup, &err) else { continue }
-            if PathSafety.isAppGroupRoot(URL(fileURLWithPath: path)) { return path }
+        var err: NSString?
+        if let path = MCMActivateContainerPath(7, groupID, true, &err),
+           PathSafety.isAppGroupRoot(URL(fileURLWithPath: path)) {
+            return path
+        }
+        err = nil
+        if let path = MCMActivateContainerPath(7, groupID, false, &err),
+           PathSafety.isAppGroupRoot(URL(fileURLWithPath: path)) {
+            return path
         }
         return nil
     }
@@ -344,6 +339,14 @@ enum ContainerLister {
         }
         try FileManager.default.copyItem(at: src, to: dest)
         return dest
+    }
+}
+
+func settleGrant(path: String, groupID: String?) {
+    if GrantCache.contains(path) { return }
+    let handle = GrantCache.grantOnce(path: path, groupID: groupID)
+    if handle > 0 {
+        Thread.sleep(forTimeInterval: 0.2)
     }
 }
 
