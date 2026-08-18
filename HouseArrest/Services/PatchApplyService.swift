@@ -14,7 +14,6 @@ struct ApplyReceipt: Codable, Identifiable {
 }
 
 enum PatchApplyService {
-    /// Default: real MCM + bad_query. Swap to StubContainerAccess only for UI-only builds.
     static var access: ContainerAccessing = MHAContainerAccess()
 
     static func apply(project: PatchProject, log: (String) -> Void) throws -> ApplyReceipt {
@@ -24,22 +23,8 @@ enum PatchApplyService {
         var roots: [String: URL] = [:]
         for target in project.targets {
             let id = try PathSafety.validateTargetID(target)
-            let root = try access.resolveRoot(targetID: id)
-            let kind = TargetKind.of(id)
-            switch kind {
-            case .appGroup:
-                guard PathSafety.isAppGroupRoot(root) else {
-                    throw PatchError.targetUnavailable(id)
-                }
-            case .application:
-                guard PathSafety.isAppDataRoot(root) else {
-                    throw PatchError.targetUnavailable(id)
-                }
-            }
-            let token = try access.grant(root: root, targetID: id)
-            tokens.append(token)
+            let root = try resolveAndGrant(id, tokens: &tokens, log: log)
             roots[id] = root
-            log("resolved \(id) → \(root.path)")
         }
 
         var entries: [ApplyReceipt.Entry] = []
@@ -69,6 +54,7 @@ enum PatchApplyService {
                 try? FileManager.default.removeItem(at: backup)
                 try FileManager.default.copyItem(at: dest, to: backup)
                 backupPath = backup.path
+                log("backed up \(target)/\(rel)")
             }
 
             try item.replacementData.write(to: dest, options: .atomic)
@@ -77,6 +63,57 @@ enum PatchApplyService {
         }
 
         return ApplyReceipt(id: UUID(), projectID: project.id, appliedAt: Date(), entries: entries)
+    }
+
+    static func restore(receipt: ApplyReceipt, log: (String) -> Void) throws {
+        guard !receipt.entries.isEmpty else { throw PatchError.nothingToRestore }
+        var tokens: [AccessToken] = []
+        defer { tokens.forEach { $0.release() } }
+
+        var roots: [String: URL] = [:]
+        let targets = Set(receipt.entries.map(\.targetID))
+        for target in targets {
+            let id = try PathSafety.validateTargetID(target)
+            roots[id] = try resolveAndGrant(id, tokens: &tokens, log: log)
+        }
+
+        for entry in receipt.entries {
+            let rel = try PathSafety.validateRelativePath(entry.relativePath)
+            guard let root = roots[entry.targetID] else {
+                throw PatchError.targetUnavailable(entry.targetID)
+            }
+            let dest = root.appendingPathComponent(rel)
+            if let backup = entry.backupPath, FileManager.default.fileExists(atPath: backup) {
+                try FileManager.default.createDirectory(
+                    at: dest.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try? FileManager.default.removeItem(at: dest)
+                try FileManager.default.copyItem(at: URL(fileURLWithPath: backup), to: dest)
+                log("restored \(entry.targetID)/\(rel)")
+            } else if FileManager.default.fileExists(atPath: dest.path) {
+                try FileManager.default.removeItem(at: dest)
+                log("removed patched \(entry.targetID)/\(rel)")
+            }
+        }
+    }
+
+    private static func resolveAndGrant(
+        _ id: String,
+        tokens: inout [AccessToken],
+        log: (String) -> Void
+    ) throws -> URL {
+        let root = try access.resolveRoot(targetID: id)
+        switch TargetKind.of(id) {
+        case .appGroup:
+            guard PathSafety.isAppGroupRoot(root) else { throw PatchError.targetUnavailable(id) }
+        case .application:
+            guard PathSafety.isAppDataRoot(root) else { throw PatchError.targetUnavailable(id) }
+        }
+        let token = try access.grant(root: root, targetID: id)
+        tokens.append(token)
+        log("resolved \(id) → \(root.path)")
+        return root
     }
 
     private static func backupDirectory(for projectID: UUID) throws -> URL {

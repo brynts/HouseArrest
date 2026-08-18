@@ -7,8 +7,15 @@ final class AppModel: ObservableObject {
     @Published var selectedTab: AppTab = .home
     @Published var projects: [PatchProject] = []
     @Published var logLines: [String] = []
+    @Published var installedPatches: [String: InstalledPatchRecord] = [:]
 
     let device = DeviceInfo.current()
+
+    private let patchStoreKey = "ha.installedPatches"
+
+    init() {
+        loadPatches()
+    }
 
     var logsText: String {
         logLines.joined(separator: "\n")
@@ -28,5 +35,32 @@ final class AppModel: ObservableObject {
     func addProject(_ project: PatchProject) {
         projects.insert(project, at: 0)
         log("project added: \(project.name)")
+    }
+
+    func markPatched(bundleID: String, projectName: String, receipt: ApplyReceipt) {
+        installedPatches[bundleID] = InstalledPatchRecord(
+            bundleID: bundleID,
+            projectName: projectName,
+            receipt: receipt
+        )
+        savePatches()
+    }
+
+    func clearPatch(bundleID: String) {
+        installedPatches.removeValue(forKey: bundleID)
+        savePatches()
+    }
+
+    private func loadPatches() {
+        guard let data = UserDefaults.standard.data(forKey: patchStoreKey),
+              let decoded = try? JSONDecoder().decode([String: InstalledPatchRecord].self, from: data)
+        else { return }
+        installedPatches = decoded
+    }
+
+    private func savePatches() {
+        if let data = try? JSONEncoder().encode(installedPatches) {
+            UserDefaults.standard.set(data, forKey: patchStoreKey)
+        }
     }
 }
