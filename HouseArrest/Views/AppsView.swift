@@ -194,7 +194,7 @@ struct AppDetailView: View {
                 }
             }
 
-            Section("Clean") {
+            Section {
                 Button {
                     stub("Clean Caches")
                 } label: {
@@ -210,6 +210,8 @@ struct AppDetailView: View {
                 } label: {
                     Label("Reset app data", systemImage: "arrow.counterclockwise")
                 }
+            } header: {
+                Text("Clean")
             } footer: {
                 Text("Scaffold only — Backup / Browse / Patch / Clean will be wired next. Data size is approximate when measured.")
             }
