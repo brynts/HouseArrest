@@ -55,7 +55,7 @@ struct PatchProject: Identifiable, Codable, Hashable {
     var groupTargetCount: Int { rules.filter(\.isAppGroup).count }
 }
 
-struct InstalledPatchRecord: Codable, Equatable {
+struct InstalledPatchRecord: Codable {
     var bundleID: String
     var projectName: String
     var receipt: ApplyReceipt

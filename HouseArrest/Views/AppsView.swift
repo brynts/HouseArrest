@@ -52,6 +52,15 @@ struct AppsView: View {
                         }
                     }
                     .listStyle(.insetGrouped)
+                    .safeAreaInset(edge: .top) {
+                        if isLoading {
+                            Text(scanTotal > 0 ? "\(scanTitle)  \(scanCurrent)/\(scanTotal)" : scanTitle)
+                                .font(.footnote)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(HATheme.card)
+                        }
+                    }
                 }
             }
             .background(Color.black)
@@ -62,16 +71,18 @@ struct AppsView: View {
             .searchable(text: $search, prompt: "Name or bundle ID")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: refresh) {
+                    Button {
+                        refresh(rescan: true)
+                    } label: {
                         Image(systemName: "arrow.clockwise")
                             .foregroundStyle(HATheme.accent)
                     }
                     .disabled(isLoading)
                 }
             }
-            .refreshable { refresh() }
+            .refreshable { refresh(rescan: false) }
             .onAppear {
-                if apps.isEmpty { refresh() }
+                if apps.isEmpty { refresh(rescan: true) }
             }
         }
     }
@@ -110,7 +121,9 @@ struct AppsView: View {
         }
     }
 
-    private func refresh() {
+    private func refresh(rescan: Bool) {
+        if isLoading { return }
+        if rescan { apps = [] }
         isLoading = true
         errorText = nil
         scanTitle = "Finding apps"
@@ -153,6 +166,10 @@ struct AppDetailView: View {
     @State private var busy = false
     @State private var pending: PendingClean?
     @State private var showImporter = false
+
+    private var installed: InstalledPatchRecord? {
+        appModel.installedPatches[app.bundleID]
+    }
 
     private struct PendingClean: Identifiable {
         let id = UUID()
@@ -210,6 +227,28 @@ struct AppDetailView: View {
                     Label("Patch", systemImage: "wrench.and.screwdriver")
                 }
                 .disabled(busy)
+            }
+
+            Section {
+                if let installed {
+                    Text(installed.projectName)
+                    Text("\(installed.receipt.entries.count) file(s)")
+                        .font(.caption)
+                        .foregroundStyle(HATheme.secondaryText)
+                } else {
+                    Text("Not patched")
+                        .foregroundStyle(HATheme.secondaryText)
+                }
+                Button(role: .destructive, action: unpatch) {
+                    Label("Unpatch", systemImage: "arrow.uturn.backward")
+                }
+                .disabled(busy || installed == nil)
+            } header: {
+                Text("Patch")
+            } footer: {
+                Text(installed == nil
+                     ? "Import a .ha package to patch this app."
+                     : "Unpatch restores the original files from backup.")
             }
 
             Section {
@@ -307,11 +346,35 @@ struct AppDetailView: View {
             let project = try HAPackageCodec.decode(try Data(contentsOf: url))
             appModel.addProject(project)
             let receipt = try PatchApplyService.apply(project: project) { appModel.log($0) }
+            appModel.markPatched(bundleID: app.bundleID, projectName: project.name, receipt: receipt)
             message = "Applied \(receipt.entries.count) file(s) from \(project.name)."
             appModel.log("apply ok from apps tab project=\(project.name) files=\(receipt.entries.count)")
         } catch {
             message = error.localizedDescription
             appModel.log("apply failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func unpatch() {
+        guard let installed else { return }
+        busy = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try PatchApplyService.restore(receipt: installed.receipt) { line in
+                    DispatchQueue.main.async { appModel.log(line) }
+                }
+                DispatchQueue.main.async {
+                    appModel.clearPatch(bundleID: app.bundleID)
+                    busy = false
+                    message = "Restored original files."
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    busy = false
+                    message = error.localizedDescription
+                    appModel.log("unpatch failed: \(error.localizedDescription)")
+                }
+            }
         }
     }
 
