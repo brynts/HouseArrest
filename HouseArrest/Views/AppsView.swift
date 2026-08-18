@@ -175,28 +175,19 @@ struct AppDetailView: View {
                 }
             }
 
-            Section("Size") {
+            Section {
                 if measuring && usage == nil {
                     ProgressView()
                 } else {
-                    LabeledContent("Documents", value: usage?.documentsLabel ?? "—")
-                    LabeledContent("Caches", value: usage?.cachesLabel ?? "—")
-                    LabeledContent("tmp", value: usage?.tmpLabel ?? "—")
-                }
-            }
-
-            Section {
-                Button { stub("Clean Caches") } label: {
-                    Label("Clean Caches", systemImage: "trash")
-                }
-                Button { stub("Clean tmp") } label: {
-                    Label("Clean tmp", systemImage: "trash")
+                    dataRow("Documents", usage?.documentsLabel) { stub("Clean Documents") }
+                    dataRow("Caches", usage?.cachesLabel) { stub("Clean Caches") }
+                    dataRow("tmp", usage?.tmpLabel) { stub("Clean tmp") }
                 }
                 Button(role: .destructive) { stub("Reset app data") } label: {
                     Label("Reset app data", systemImage: "arrow.counterclockwise")
                 }
             } header: {
-                Text("Clean")
+                Text("Data")
             } footer: {
                 Text("Backup / Browse / Patch / Clean will be wired next.")
             }
@@ -211,6 +202,19 @@ struct AppDetailView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(message ?? "")
+        }
+    }
+
+    private func dataRow(_ title: String, _ size: String?, action: @escaping () -> Void) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(size ?? "—")
+                    .font(.caption)
+                    .foregroundStyle(HATheme.secondaryText)
+            }
+            Spacer()
+            Button("Clean", action: action)
         }
     }
 
