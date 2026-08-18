@@ -92,7 +92,7 @@ struct AppsView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(Color.secondary.opacity(0.25))
-                    .frame(width: 44, height: 44)
+                    .frame(width: 44, height: 64)
                 Image(systemName: "app.fill")
                     .foregroundStyle(HATheme.accent)
             }
@@ -139,6 +139,7 @@ struct AppDetailView: View {
         let detail: String
         let areas: [AppCleanService.Area]
         let confirmTitle: String
+        let fullReset: Bool
     }
 
     var body: some View {
@@ -209,9 +210,10 @@ struct AppDetailView: View {
                 Button(role: .destructive) {
                     pending = PendingClean(
                         title: "Reset all data?",
-                        detail: "Deletes Documents, Caches, tmp, and Preferences for \(app.displayName). Login and settings are wiped.",
-                        areas: AppCleanService.resetAreas,
-                        confirmTitle: "Reset all"
+                        detail: "Wipes Documents, tmp, and all of Library (Preferences, Application Support, Cookies, WebKit, caches) for \(app.displayName). Same as a fresh install.",
+                        areas: [],
+                        confirmTitle: "Reset all",
+                        fullReset: true
                     )
                 } label: {
                     Label("Reset all", systemImage: "arrow.counterclockwise")
@@ -220,7 +222,7 @@ struct AppDetailView: View {
             } header: {
                 Text("Data")
             } footer: {
-                Text(busy ? "Working…" : "Clean: Documents, Caches, tmp. Reset all also wipes Preferences.")
+                Text(busy ? "Working…" : "Clean: Documents, Caches, tmp. Reset all is a full fresh-install wipe.")
             }
         }
         .navigationTitle(app.displayName)
@@ -243,7 +245,7 @@ struct AppDetailView: View {
             titleVisibility: .visible
         ) {
             Button(pending?.confirmTitle ?? "Clean", role: .destructive) {
-                if let pending { runClean(pending.areas) }
+                if let pending { runClean(pending) }
             }
             Button("Cancel", role: .cancel) { pending = nil }
         } message: {
@@ -282,22 +284,34 @@ struct AppDetailView: View {
             title: "Clean \(area.title)?",
             detail: "Deletes files in \(area.title) for \(app.displayName).",
             areas: [area],
-            confirmTitle: "Clean"
+            confirmTitle: "Clean",
+            fullReset: false
         )
     }
 
-    private func runClean(_ areas: [AppCleanService.Area]) {
+    private func runClean(_ pending: PendingClean) {
         busy = true
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let removed = try AppCleanService.clean(
-                    bundleID: app.bundleID,
-                    containerPath: app.dataContainerPath,
-                    areas: areas,
-                    log: { line in
-                        DispatchQueue.main.async { appModel.log(line) }
-                    }
-                )
+                let removed: Int
+                if pending.fullReset {
+                    removed = try AppCleanService.resetAll(
+                        bundleID: app.bundleID,
+                        containerPath: app.dataContainerPath,
+                        log: { line in
+                            DispatchQueue.main.async { appModel.log(line) }
+                        }
+                    )
+                } else {
+                    removed = try AppCleanService.clean(
+                        bundleID: app.bundleID,
+                        containerPath: app.dataContainerPath,
+                        areas: pending.areas,
+                        log: { line in
+                            DispatchQueue.main.async { appModel.log(line) }
+                        }
+                    )
+                }
                 let result = app.dataContainerPath.map { AppDiscoveryService.usage(for: $0) }
                 DispatchQueue.main.async {
                     if let result { usage = result }
