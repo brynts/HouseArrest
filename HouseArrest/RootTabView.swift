@@ -13,7 +13,6 @@ struct RootTabView: View {
             }
         }
         .tint(HATheme.accent)
-        .tabBarMinimizeBehavior(.onScrollDown)
     }
 }
 

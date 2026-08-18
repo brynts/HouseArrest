@@ -13,10 +13,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode 26
+      - name: Select Xcode
         run: |
           if [ -d /Applications/Xcode_26.app ]; then
             sudo xcode-select -s /Applications/Xcode_26.app/Contents/Developer
+          elif [ -d /Applications/Xcode_16.4.app ]; then
+            sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
           elif [ -d /Applications/Xcode.app ]; then
             sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           fi
@@ -36,7 +38,6 @@ jobs:
             -destination 'generic/platform=iOS' \
             -archivePath "$ARCHIVE" \
             -derivedDataPath "$DERIVED" \
-            IPHONEOS_DEPLOYMENT_TARGET=26.0 \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
