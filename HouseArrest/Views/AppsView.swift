@@ -52,13 +52,13 @@ struct AppsView: View {
                         }
                     }
                     .listStyle(.insetGrouped)
-                    .safeAreaInset(edge: .top) {
+                    .overlay(alignment: .top) {
                         if isLoading {
                             Text(scanTotal > 0 ? "\(scanTitle)  \(scanCurrent)/\(scanTotal)" : scanTitle)
                                 .font(.footnote)
+                                .padding(.vertical, 6)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                                .background(HATheme.card)
+                                .background(HATheme.card.opacity(0.95))
                         }
                     }
                 }
@@ -130,7 +130,7 @@ struct AppsView: View {
         scanTitle = "Finding apps"
         scanCurrent = 0
         scanTotal = 0
-        DispatchQueue.global(qos: .userInitiated).async {
+        HAWork.queue.async {
             let list = AppDiscoveryService.discover(thirdPartyOnly: true) { title, current, total in
                 DispatchQueue.main.async {
                     scanTitle = title
@@ -138,17 +138,10 @@ struct AppsView: View {
                     scanTotal = total
                 }
             }
-            let probe = [
-                HACatalogLastProbe(),
-                LaunchServicesStore.lastProbe,
-                AppDiscoveryService.lastProbe
-            ].joined(separator: "\n")
             DispatchQueue.main.async {
                 apps = list
                 isLoading = false
-                for line in probe.split(separator: "\n") where !line.isEmpty {
-                    appModel.log(String(line))
-                }
+                appModel.log(AppDiscoveryService.lastProbe)
                 appModel.log("apps scan third-party=\(list.count)")
                 if list.isEmpty {
                     errorText = "No apps resolved. Copy logs from Settings."
@@ -206,12 +199,6 @@ struct AppDetailView: View {
                             .font(.caption.monospaced())
                             .foregroundStyle(HATheme.secondaryText)
                             .textSelection(.enabled)
-                        if let path = app.dataContainerPath {
-                            Text(path)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
-                        }
                     }
                 }
                 .padding(.vertical, 4)
@@ -260,15 +247,9 @@ struct AppDetailView: View {
                 if measuring && usage == nil {
                     ProgressView()
                 } else {
-                    dataRow("Documents", usage?.documentsLabel) {
-                        askClean(.documents)
-                    }
-                    dataRow("Caches", usage?.cachesLabel) {
-                        askClean(.caches)
-                    }
-                    dataRow("tmp", usage?.tmpLabel) {
-                        askClean(.tmp)
-                    }
+                    dataRow("Documents", usage?.documentsLabel) { askClean(.documents) }
+                    dataRow("Caches", usage?.cachesLabel) { askClean(.caches) }
+                    dataRow("tmp", usage?.tmpLabel) { askClean(.tmp) }
                 }
             } header: {
                 Text("Data")
@@ -285,10 +266,7 @@ struct AppDetailView: View {
                 allowsMultipleSelection: false
             ) { urls in
                 showImporter = false
-                guard !urls.isEmpty else { return }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    handlePatch(urls)
-                }
+                handlePatch(urls)
             }
             .ignoresSafeArea()
         }
@@ -346,13 +324,8 @@ struct AppDetailView: View {
     private func handlePatch(_ urls: [URL]) {
         guard let url = urls.first else { return }
         busy = true
-        DispatchQueue.global(qos: .userInitiated).async {
+        HAWork.queue.async {
             do {
-                guard url.pathExtension.lowercased() == "ha" else {
-                    throw PatchError.invalidPackage
-                }
-                let accessed = url.startAccessingSecurityScopedResource()
-                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
                 let data = try Data(contentsOf: url)
                 let project = try HAPackageCodec.decode(data)
                 let receipt = try PatchApplyService.apply(project: project) { line in
@@ -363,7 +336,6 @@ struct AppDetailView: View {
                     appModel.markPatched(bundleID: app.bundleID, projectName: project.name, receipt: receipt)
                     busy = false
                     message = "Applied \(receipt.entries.count) file(s) from \(project.name)."
-                    appModel.log("apply ok from apps tab project=\(project.name) files=\(receipt.entries.count)")
                 }
             } catch {
                 DispatchQueue.main.async {
@@ -378,7 +350,7 @@ struct AppDetailView: View {
     private func unpatch() {
         guard let installed else { return }
         busy = true
-        DispatchQueue.global(qos: .userInitiated).async {
+        HAWork.queue.async {
             do {
                 try PatchApplyService.restore(receipt: installed.receipt) { line in
                     DispatchQueue.main.async { appModel.log(line) }
@@ -408,7 +380,7 @@ struct AppDetailView: View {
 
     private func runClean(_ areas: [AppCleanService.Area]) {
         busy = true
-        DispatchQueue.global(qos: .userInitiated).async {
+        HAWork.queue.async {
             do {
                 let removed = try AppCleanService.clean(
                     bundleID: app.bundleID,
@@ -437,7 +409,7 @@ struct AppDetailView: View {
     private func loadUsage() {
         guard let path = app.dataContainerPath, usage == nil else { return }
         measuring = true
-        DispatchQueue.global(qos: .userInitiated).async {
+        HAWork.queue.async {
             let result = AppDiscoveryService.usage(for: path)
             DispatchQueue.main.async {
                 usage = result
