@@ -93,12 +93,8 @@ enum AppDiscoveryService {
         let live = (MCMEnumerateIdentifiersForClass(2, 400, &err) as? [String]) ?? []
         HALog.write("refresh mcm class2=\(live.count) err=\(err ?? "none")")
 
-        var candidates = Set(live)
-        candidates.formUnion(LaunchServicesStore.newIdentifiers())
-        candidates.formUnion(knownThirdParty)
-
         var added: [String: InstalledApp] = [:]
-        for bundleID in candidates {
+        for bundleID in live {
             guard addIfNeeded(bundleID, into: &byID, thirdPartyOnly: thirdPartyOnly) else { continue }
             if let app = byID[bundleID] { added[bundleID] = app }
         }
@@ -111,7 +107,7 @@ enum AppDiscoveryService {
         }
         cachedApps = result
         knownThirdParty.formUnion(result.map(\.bundleID))
-        lastProbe = "refresh added=\(added.count) dropped=\(dropped) total=\(result.count)\n" + LaunchServicesStore.lastProbe
+        lastProbe = "refresh added=\(added.count) dropped=\(dropped) live=\(live.count) total=\(result.count)"
         HALog.write("refresh done added=\(added.count) dropped=\(dropped) total=\(result.count)")
         return result
     }
