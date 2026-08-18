@@ -14,14 +14,18 @@ final class AppModel: ObservableObject {
     private let patchStoreKey = "ha.installedPatches"
 
     init() {
+        logLines = HALog.recentLines()
         loadPatches()
+        log("session start")
     }
 
     var logsText: String {
-        logLines.joined(separator: "\n")
+        let disk = HALog.read()
+        return disk.isEmpty ? logLines.joined(separator: "\n") : disk
     }
 
     func log(_ message: String) {
+        HALog.write(message)
         let stamp = ISO8601DateFormatter().string(from: Date())
         logLines.insert("\(stamp)  \(message)", at: 0)
         if logLines.count > 500 { logLines = Array(logLines.prefix(500)) }
@@ -29,7 +33,7 @@ final class AppModel: ObservableObject {
 
     func copyLogs() {
         UIPasteboard.general.string = logsText.isEmpty ? "(empty)" : logsText
-        log("logs copied (\(logLines.count) lines)")
+        log("logs copied")
     }
 
     func addProject(_ project: PatchProject) {
