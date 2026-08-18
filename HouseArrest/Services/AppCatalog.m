@@ -141,52 +141,84 @@ static NSDictionary *appsFromMobileInstallation(void) {
     return result;
 }
 
-static NSString *metadataName(NSString *containerPath) {
-    NSString *meta = [containerPath stringByAppendingPathComponent:@".com.apple.mobile_container_manager.metadata.plist"];
+static BOOL isUUIDFolder(NSString *name) {
+    if (name.length != 36) return NO;
+    return [name characterAtIndex:8] == '-' &&
+        [name characterAtIndex:13] == '-' &&
+        [name characterAtIndex:18] == '-' &&
+        [name characterAtIndex:23] == '-';
+}
+
+static NSDictionary *plistAfterGrant(NSString *container) {
+    char buf[1024];
+    if (![container getCString:buf maxLength:sizeof(buf) encoding:NSUTF8StringEncoding]) return nil;
+    int64_t handle = bad_query(buf, true, NULL, false);
+    NSString *meta = [container stringByAppendingPathComponent:@".com.apple.mobile_container_manager.metadata.plist"];
     NSDictionary *plist = [NSDictionary dictionaryWithContentsOfFile:meta];
-    if (![plist isKindOfClass:[NSDictionary class]]) return nil;
-    NSString *bid = stringValue(plist[@"MCMMetadataIdentifier"]);
-    id info = plist[@"MCMMetadataInfo"];
-    if ([info isKindOfClass:[NSDictionary class]]) {
-        NSString *name = stringValue(info[@"CFBundleDisplayName"]) ?: stringValue(info[@"CFBundleName"]);
-        if (name.length) return [NSString stringWithFormat:@"%@\t%@", bid ?: @"", name];
-    }
-    return bid;
+    if (handle >= 0) bad_query_release(handle);
+    return [plist isKindOfClass:[NSDictionary class]] ? plist : nil;
 }
 
 static NSDictionary *appsFromContainerWalk(void) {
     NSMutableDictionary *result = [NSMutableDictionary dictionary];
-    char path[] = "/var/mobile/Containers/Data/Application";
-    int64_t handle = bad_query(path, true, NULL, false);
-    probe(@"bad_query grant Application handle=%lld", handle);
-
-    NSError *err = nil;
-    NSArray *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:@(path) error:&err];
-    probe(@"NSFileManager Application dir count=%lu err=%@", (unsigned long)names.count, err.localizedDescription ?: @"none");
-
-    if (names.count == 0) {
-        char *listed = bad_query_list(path, 250000);
-        probe(@"bad_query_list ptr=%p", listed);
-        if (listed) {
-            NSArray *lines = [[NSString stringWithUTF8String:listed] componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]];
-            free(listed);
-            NSMutableArray *dirs = [NSMutableArray array];
-            for (NSString *line in lines) {
-                if (line.length) [dirs addObject:[line lastPathComponent]];
-            }
-            names = dirs;
-            probe(@"bad_query_list entries=%lu", (unsigned long)names.count);
-        }
+    char root[] = "/var/mobile/Containers/Data/Application";
+    char *listed = bad_query_list(root, 400000);
+    if (!listed) {
+        char alt[] = "/private/var/mobile/Containers/Data/Application";
+        listed = bad_query_list(alt, 400000);
+        probe(@"bad_query_list private-var fallback ptr=%p", listed);
+    }
+    if (!listed) {
+        probe(@"bad_query_list returned NULL");
+        return result;
     }
 
-    for (NSString *name in names) {
+    NSArray *lines = [[NSString stringWithUTF8String:listed] componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]];
+    free(listed);
+    probe(@"bad_query_list entries=%lu sample=%@",
+          (unsigned long)lines.count,
+          lines.firstObject.length ? lines.firstObject : @"(empty)");
+
+    NSInteger grantOK = 0, grantMeta = 0, skipped = 0;
+    for (NSString *raw in lines) {
         @autoreleasepool {
-            if (name.length != 36) continue;
-            NSString *container = [@(path) stringByAppendingPathComponent:name];
-            NSString *metaPath = [container stringByAppendingPathComponent:@".com.apple.mobile_container_manager.metadata.plist"];
-            NSDictionary *plist = [NSDictionary dictionaryWithContentsOfFile:metaPath];
+            NSString *line = [raw stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            if (!line.length) continue;
+            NSString *leaf = line.lastPathComponent;
+            if (!isUUIDFolder(leaf)) {
+                skipped++;
+                continue;
+            }
+            NSString *container = line;
+            if (![container hasPrefix:@"/"]) {
+                container = [@(root) stringByAppendingPathComponent:leaf];
+            }
+            if ([container hasPrefix:@"/var/"] && ![container hasPrefix:@"/private/"]) {
+                NSString *priv = [@"/private" stringByAppendingString:container];
+                NSDictionary *plist = plistAfterGrant(priv) ?: plistAfterGrant(container);
+                if (!plist) continue;
+                grantOK++;
+                NSString *bundleID = stringValue(plist[@"MCMMetadataIdentifier"]);
+                if (!bundleID.length) continue;
+                grantMeta++;
+                NSString *display = bundleID;
+                id info = plist[@"MCMMetadataInfo"];
+                if ([info isKindOfClass:[NSDictionary class]]) {
+                    NSString *n = stringValue(info[@"CFBundleDisplayName"]) ?: stringValue(info[@"CFBundleName"]);
+                    if (n.length) display = n;
+                }
+                NSMutableDictionary *entry = [NSMutableDictionary dictionary];
+                entry[@"name"] = display;
+                entry[@"container"] = priv;
+                result[bundleID] = entry;
+                continue;
+            }
+            NSDictionary *plist = plistAfterGrant(container);
+            if (!plist) continue;
+            grantOK++;
             NSString *bundleID = stringValue(plist[@"MCMMetadataIdentifier"]);
             if (!bundleID.length) continue;
+            grantMeta++;
             NSString *display = bundleID;
             id info = plist[@"MCMMetadataInfo"];
             if ([info isKindOfClass:[NSDictionary class]]) {
@@ -199,8 +231,8 @@ static NSDictionary *appsFromContainerWalk(void) {
             result[bundleID] = entry;
         }
     }
-    if (handle >= 0) bad_query_release(handle);
-    probe(@"container walk count=%lu", (unsigned long)result.count);
+    probe(@"walk skippedNonUUID=%ld grantedReadable=%ld withBundleID=%ld apps=%lu",
+          (long)skipped, (long)grantOK, (long)grantMeta, (unsigned long)result.count);
     return result;
 }
 
