@@ -47,7 +47,7 @@ struct AppsView: View {
                     )
                 } else {
                     List(filtered) { app in
-                        NavigationLink(value: app) {
+                        NavigationLink(value: app.bundleID) {
                             appRow(app)
                         }
                     }
@@ -65,24 +65,26 @@ struct AppsView: View {
             }
             .background(Color.black)
             .navigationTitle("Apps")
-            .navigationDestination(for: InstalledApp.self) { app in
-                AppDetailView(app: app)
+            .navigationDestination(for: String.self) { bundleID in
+                if let app = apps.first(where: { $0.bundleID == bundleID }) {
+                    AppDetailView(app: app)
+                } else {
+                    ContentUnavailableView("App not found", systemImage: "app")
+                }
             }
             .searchable(text: $search, prompt: "Name or bundle ID")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        refresh(rescan: true)
-                    } label: {
+                    Button(action: refresh) {
                         Image(systemName: "arrow.clockwise")
-                            .foregroundStyle(HATheme.accent)
+                            .foregroundStyle(isLoading ? Color.secondary : HATheme.accent)
                     }
                     .disabled(isLoading)
                 }
             }
-            .refreshable { refresh(rescan: false) }
+            .refreshable { refresh() }
             .onAppear {
-                if apps.isEmpty { refresh(rescan: true) }
+                if apps.isEmpty { refresh() }
             }
         }
     }
@@ -121,9 +123,8 @@ struct AppsView: View {
         }
     }
 
-    private func refresh(rescan: Bool) {
+    private func refresh() {
         if isLoading { return }
-        if rescan { apps = [] }
         isLoading = true
         errorText = nil
         scanTitle = "Finding apps"
@@ -170,6 +171,8 @@ struct AppDetailView: View {
     private var installed: InstalledPatchRecord? {
         appModel.installedPatches[app.bundleID]
     }
+
+    private var canUnpatch: Bool { installed != nil && !busy }
 
     private struct PendingClean: Identifiable {
         let id = UUID()
@@ -239,10 +242,12 @@ struct AppDetailView: View {
                     Text("Not patched")
                         .foregroundStyle(HATheme.secondaryText)
                 }
-                Button(role: .destructive, action: unpatch) {
-                    Label("Unpatch", systemImage: "arrow.uturn.backward")
+                Button(action: unpatch) {
+                    Text("Unpatch")
+                        .frame(maxWidth: .infinity)
                 }
-                .disabled(busy || installed == nil)
+                .disabled(!canUnpatch)
+                .foregroundStyle(canUnpatch ? Color.red : Color.secondary)
             } header: {
                 Text("Patch")
             } footer: {
@@ -280,7 +285,10 @@ struct AppDetailView: View {
                 allowsMultipleSelection: false
             ) { urls in
                 showImporter = false
-                handlePatch(urls)
+                guard !urls.isEmpty else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    handlePatch(urls)
+                }
             }
             .ignoresSafeArea()
         }
@@ -337,21 +345,33 @@ struct AppDetailView: View {
 
     private func handlePatch(_ urls: [URL]) {
         guard let url = urls.first else { return }
-        do {
-            guard url.pathExtension.lowercased() == "ha" else {
-                throw PatchError.invalidPackage
+        busy = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                guard url.pathExtension.lowercased() == "ha" else {
+                    throw PatchError.invalidPackage
+                }
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                let data = try Data(contentsOf: url)
+                let project = try HAPackageCodec.decode(data)
+                let receipt = try PatchApplyService.apply(project: project) { line in
+                    DispatchQueue.main.async { appModel.log(line) }
+                }
+                DispatchQueue.main.async {
+                    appModel.addProject(project)
+                    appModel.markPatched(bundleID: app.bundleID, projectName: project.name, receipt: receipt)
+                    busy = false
+                    message = "Applied \(receipt.entries.count) file(s) from \(project.name)."
+                    appModel.log("apply ok from apps tab project=\(project.name) files=\(receipt.entries.count)")
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    busy = false
+                    message = error.localizedDescription
+                    appModel.log("apply failed: \(error.localizedDescription)")
+                }
             }
-            let accessed = url.startAccessingSecurityScopedResource()
-            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-            let project = try HAPackageCodec.decode(try Data(contentsOf: url))
-            appModel.addProject(project)
-            let receipt = try PatchApplyService.apply(project: project) { appModel.log($0) }
-            appModel.markPatched(bundleID: app.bundleID, projectName: project.name, receipt: receipt)
-            message = "Applied \(receipt.entries.count) file(s) from \(project.name)."
-            appModel.log("apply ok from apps tab project=\(project.name) files=\(receipt.entries.count)")
-        } catch {
-            message = error.localizedDescription
-            appModel.log("apply failed: \(error.localizedDescription)")
         }
     }
 
