@@ -104,7 +104,11 @@ struct AppsView: View {
         errorText = nil
         DispatchQueue.global(qos: .userInitiated).async {
             let list = AppDiscoveryService.discover(thirdPartyOnly: true)
-            let probe = HACatalogLastProbe() + "\n" + LaunchServicesStore.lastProbe
+            let probe = [
+                HACatalogLastProbe(),
+                LaunchServicesStore.lastProbe,
+                AppDiscoveryService.lastProbe
+            ].joined(separator: "\n")
             DispatchQueue.main.async {
                 apps = list
                 isLoading = false
@@ -214,7 +218,15 @@ struct AppDetailView: View {
                     .foregroundStyle(HATheme.secondaryText)
             }
             Spacer()
-            Button("Clean", action: action)
+            Button(action: action) {
+                Text("Clean")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(HATheme.accent.opacity(0.18), in: Capsule())
+                    .foregroundStyle(HATheme.accent)
+            }
+            .buttonStyle(.plain)
         }
     }
 
