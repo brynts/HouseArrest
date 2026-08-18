@@ -5,7 +5,6 @@ struct AppsView: View {
     @State private var apps: [InstalledApp] = []
     @State private var isLoading = false
     @State private var search = ""
-    @State private var measureSize = false
     @State private var errorText: String?
 
     private var filtered: [InstalledApp] {
@@ -52,28 +51,16 @@ struct AppsView: View {
             .searchable(text: $search, prompt: "Name or bundle ID")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        refresh(measure: measureSize)
-                    } label: {
+                    Button(action: refresh) {
                         Image(systemName: "arrow.clockwise")
                             .foregroundStyle(HATheme.accent)
                     }
                     .disabled(isLoading)
                 }
-                ToolbarItem(placement: .topBarLeading) {
-                    Toggle(isOn: $measureSize) {
-                        Text("Sizes")
-                    }
-                    .toggleStyle(.button)
-                    .disabled(isLoading)
-                }
             }
-            .refreshable { refresh(measure: measureSize) }
+            .refreshable { refresh() }
             .onAppear {
-                if apps.isEmpty { refresh(measure: false) }
-            }
-            .onChange(of: measureSize) { _, on in
-                if on { refresh(measure: true) }
+                if apps.isEmpty { refresh() }
             }
         }
     }
@@ -89,12 +76,6 @@ struct AppsView: View {
                     .font(.caption)
                     .foregroundStyle(HATheme.secondaryText)
                     .lineLimit(1)
-            }
-            Spacer(minLength: 8)
-            if measureSize {
-                Text(app.dataSizeLabel)
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(HATheme.secondaryText)
             }
         }
         .padding(.vertical, 2)
@@ -118,11 +99,11 @@ struct AppsView: View {
         }
     }
 
-    private func refresh(measure: Bool) {
+    private func refresh() {
         isLoading = true
         errorText = nil
         DispatchQueue.global(qos: .userInitiated).async {
-            let list = AppDiscoveryService.discover(thirdPartyOnly: true, measureSize: measure)
+            let list = AppDiscoveryService.discover(thirdPartyOnly: true)
             let probe = HACatalogLastProbe() + "\n" + LaunchServicesStore.lastProbe
             DispatchQueue.main.async {
                 apps = list
@@ -143,6 +124,8 @@ struct AppDetailView: View {
     @EnvironmentObject private var appModel: AppModel
     let app: InstalledApp
     @State private var message: String?
+    @State private var usage: ContainerUsage?
+    @State private var measuring = false
 
     var body: some View {
         List {
@@ -192,6 +175,16 @@ struct AppDetailView: View {
                 }
             }
 
+            Section("Size") {
+                if measuring && usage == nil {
+                    ProgressView()
+                } else {
+                    LabeledContent("Documents", value: usage?.documentsLabel ?? "—")
+                    LabeledContent("Caches", value: usage?.cachesLabel ?? "—")
+                    LabeledContent("tmp", value: usage?.tmpLabel ?? "—")
+                }
+            }
+
             Section {
                 Button { stub("Clean Caches") } label: {
                     Label("Clean Caches", systemImage: "trash")
@@ -210,6 +203,7 @@ struct AppDetailView: View {
         }
         .navigationTitle(app.displayName)
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear(perform: loadUsage)
         .alert("Apps", isPresented: Binding(
             get: { message != nil },
             set: { if !$0 { message = nil } }
@@ -217,6 +211,18 @@ struct AppDetailView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(message ?? "")
+        }
+    }
+
+    private func loadUsage() {
+        guard let path = app.dataContainerPath, usage == nil else { return }
+        measuring = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = AppDiscoveryService.usage(for: path)
+            DispatchQueue.main.async {
+                usage = result
+                measuring = false
+            }
         }
     }
 

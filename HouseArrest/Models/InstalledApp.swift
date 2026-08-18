@@ -6,12 +6,7 @@ struct InstalledApp: Identifiable {
     var bundleID: String
     var displayName: String
     var dataContainerPath: String?
-    var dataSizeBytes: Int64
     var icon: UIImage?
-
-    var dataSizeLabel: String {
-        ByteCountFormatter.string(fromByteCount: dataSizeBytes, countStyle: .file)
-    }
 }
 
 extension InstalledApp: Hashable {
