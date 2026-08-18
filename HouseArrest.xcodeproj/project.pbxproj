@@ -23,6 +23,8 @@
 		A1000000000000000000000E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000E /* Assets.xcassets */; };
 		A10000000000000000000010 /* FileImporterRepresentableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000010 /* FileImporterRepresentableView.swift */; };
 		A10000000000000000000011 /* UTType+HA.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000011 /* UTType+HA.swift */; };
+		A10000000000000000000012 /* bad_query.c in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000012 /* bad_query.c */; };
+		A10000000000000000000013 /* mcm_bridge.m in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000013 /* mcm_bridge.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +46,11 @@
 		B1000000000000000000000F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B10000000000000000000010 /* FileImporterRepresentableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileImporterRepresentableView.swift; sourceTree = "<group>"; };
 		B10000000000000000000011 /* UTType+HA.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UTType+HA.swift"; sourceTree = "<group>"; };
+		B10000000000000000000012 /* bad_query.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = bad_query.c; sourceTree = "<group>"; };
+		B10000000000000000000013 /* mcm_bridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = mcm_bridge.m; sourceTree = "<group>"; };
+		B10000000000000000000014 /* bad_query.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bad_query.h; sourceTree = "<group>"; };
+		B10000000000000000000015 /* mcm_bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = mcm_bridge.h; sourceTree = "<group>"; };
+		B10000000000000000000016 /* Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Bridging-Header.h"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -75,6 +82,8 @@
 				E10000000000000000000005 /* Services */,
 				E10000000000000000000006 /* Views */,
 				E10000000000000000000007 /* Extensions */,
+				E10000000000000000000008 /* exploit */,
+				B10000000000000000000016 /* Bridging-Header.h */,
 				B1000000000000000000000E /* Assets.xcassets */,
 				B1000000000000000000000F /* Info.plist */,
 			);
@@ -127,6 +136,17 @@
 				B10000000000000000000011 /* UTType+HA.swift */,
 			);
 			path = Extensions;
+			sourceTree = "<group>";
+		};
+		E10000000000000000000008 /* exploit */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000012 /* bad_query.c */,
+				B10000000000000000000014 /* bad_query.h */,
+				B10000000000000000000013 /* mcm_bridge.m */,
+				B10000000000000000000015 /* mcm_bridge.h */,
+			);
+			path = exploit;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -208,6 +228,8 @@
 				A1000000000000000000000D /* SettingsView.swift in Sources */,
 				A10000000000000000000010 /* FileImporterRepresentableView.swift in Sources */,
 				A10000000000000000000011 /* UTType+HA.swift in Sources */,
+				A10000000000000000000012 /* bad_query.c in Sources */,
+				A10000000000000000000013 /* mcm_bridge.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -247,10 +269,15 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/HouseArrest",
+					"$(SRCROOT)/HouseArrest/exploit",
+				);
 				INFOPLIST_FILE = HouseArrest/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = HouseArrest;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -265,6 +292,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "HouseArrest/Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -274,10 +302,15 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/HouseArrest",
+					"$(SRCROOT)/HouseArrest/exploit",
+				);
 				INFOPLIST_FILE = HouseArrest/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = HouseArrest;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -292,6 +325,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "HouseArrest/Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
