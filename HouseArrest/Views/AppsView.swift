@@ -127,7 +127,7 @@ struct AppsView: View {
         if isLoading { return }
         isLoading = true
         errorText = nil
-        scanTitle = "Finding apps"
+        scanTitle = "Checking for new apps"
         scanCurrent = 0
         scanTotal = 0
         HAWork.queue.async {
@@ -319,48 +319,31 @@ struct AppDetailView: View {
 
     private func applyPatch(_ data: Data) {
         busy = true
-        HAWork.queue.async {
-            do {
-                let project = try HAPackageCodec.decode(data)
-                let receipt = try PatchApplyService.apply(project: project) { line in
-                    DispatchQueue.main.async { appModel.log(line) }
-                }
-                DispatchQueue.main.async {
-                    appModel.addProject(project)
-                    appModel.markPatched(bundleID: app.bundleID, projectName: project.name, receipt: receipt)
-                    busy = false
-                    message = "Applied \(receipt.entries.count) file(s) from \(project.name)."
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    busy = false
-                    message = error.localizedDescription
-                    appModel.log("apply failed: \(error.localizedDescription)")
-                }
-            }
+        defer { busy = false }
+        do {
+            let project = try HAPackageCodec.decode(data)
+            let receipt = try PatchApplyService.apply(project: project) { appModel.log($0) }
+            appModel.addProject(project)
+            appModel.markPatched(bundleID: app.bundleID, projectName: project.name, receipt: receipt)
+            message = "Applied \(receipt.entries.count) file(s) from \(project.name)."
+            appModel.log("apply ok project=\(project.name) files=\(receipt.entries.count)")
+        } catch {
+            message = error.localizedDescription
+            appModel.log("apply failed: \(error.localizedDescription)")
         }
     }
 
     private func unpatch() {
         guard let installed else { return }
         busy = true
-        HAWork.queue.async {
-            do {
-                try PatchApplyService.restore(receipt: installed.receipt) { line in
-                    DispatchQueue.main.async { appModel.log(line) }
-                }
-                DispatchQueue.main.async {
-                    appModel.clearPatch(bundleID: app.bundleID)
-                    busy = false
-                    message = "Restored original files."
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    busy = false
-                    message = error.localizedDescription
-                    appModel.log("unpatch failed: \(error.localizedDescription)")
-                }
-            }
+        defer { busy = false }
+        do {
+            try PatchApplyService.restore(receipt: installed.receipt) { appModel.log($0) }
+            appModel.clearPatch(bundleID: app.bundleID)
+            message = "Restored original files."
+        } catch {
+            message = error.localizedDescription
+            appModel.log("unpatch failed: \(error.localizedDescription)")
         }
     }
 
