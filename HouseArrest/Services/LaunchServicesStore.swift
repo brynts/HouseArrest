@@ -3,6 +3,7 @@ import Foundation
 enum LaunchServicesStore {
     private(set) static var lastProbe = ""
     private static var knownCachePaths: [String] = []
+    private static var seenIDs = Set<String>()
 
     static func identifiers() -> [String] {
         var probe: [String] = []
@@ -24,22 +25,28 @@ enum LaunchServicesStore {
         var ids: [String] = []
 
         for cache in cachePaths {
-            var pathC = Array(cache.utf8CString)
-            let handle = bad_query(&pathC, true, nil, false)
+            let handle = GrantCache.grantOnce(path: cache)
             let names = (try? FileManager.default.contentsOfDirectory(atPath: cache)) ?? []
             probe.append("cache \(cache) grant=\(handle) files=\(names.count)")
-            defer { if handle >= 0 { bad_query_release(handle) } }
             if names.isEmpty == false { knownCachePaths.append(cache) }
             ids.append(contentsOf: collectIDs(in: cache, names: names, seen: &seen, probe: &probe))
         }
 
+        seenIDs.formUnion(ids)
         probe.append("ls-store total identifiers=\(ids.count)")
         lastProbe = probe.joined(separator: "\n")
         return ids
     }
 
-    /// Re-read already-accessible Launch Services stores. No second bad_query.
-    static func identifiersIfReadable() -> [String] {
+    static func newIdentifiers() -> [String] {
+        let now = identifiersIfReadable()
+        let fresh = now.filter { !seenIDs.contains($0) }
+        seenIDs.formUnion(now)
+        lastProbe = "refresh new=\(fresh.count) total=\(now.count)\n" + lastProbe
+        return fresh
+    }
+
+    private static func identifiersIfReadable() -> [String] {
         var probe: [String] = []
         var seen = Set<String>()
         var ids: [String] = []
@@ -56,7 +63,6 @@ enum LaunchServicesStore {
             probe.append("refresh cache \(cache) files=\(names.count)")
             ids.append(contentsOf: collectIDs(in: cache, names: names, seen: &seen, probe: &probe))
         }
-        probe.append("ls-store refresh identifiers=\(ids.count)")
         lastProbe = probe.joined(separator: "\n")
         return ids
     }
