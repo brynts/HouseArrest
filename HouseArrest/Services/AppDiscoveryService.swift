@@ -22,6 +22,7 @@ struct ContainerUsage {
 enum AppDiscoveryService {
     static var lastProbe = ""
     private static var cachedApps: [InstalledApp] = []
+    private static var knownThirdParty = Set<String>()
     private static var itunesCache: [String: (name: String, icon: UIImage?)] = [:]
 
     static func discover(
@@ -50,6 +51,7 @@ enum AppDiscoveryService {
             $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
         }
         cachedApps = result
+        knownThirdParty.formUnion(result.map(\.bundleID))
         HALog.write("first scan done apps=\(result.count)")
         return result
     }
@@ -87,10 +89,16 @@ enum AppDiscoveryService {
             }
         }
 
+        var err: NSString?
+        let live = (MCMEnumerateIdentifiersForClass(2, 400, &err) as? [String]) ?? []
+        HALog.write("refresh mcm class2=\(live.count) err=\(err ?? "none")")
+
+        var candidates = Set(live)
+        candidates.formUnion(LaunchServicesStore.newIdentifiers())
+        candidates.formUnion(knownThirdParty)
+
         var added: [String: InstalledApp] = [:]
-        let fresh = LaunchServicesStore.newIdentifiers()
-        HALog.write("refresh new ids=\(fresh.count) dropped=\(dropped)")
-        for bundleID in fresh {
+        for bundleID in candidates {
             guard addIfNeeded(bundleID, into: &byID, thirdPartyOnly: thirdPartyOnly) else { continue }
             if let app = byID[bundleID] { added[bundleID] = app }
         }
@@ -102,6 +110,7 @@ enum AppDiscoveryService {
             $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
         }
         cachedApps = result
+        knownThirdParty.formUnion(result.map(\.bundleID))
         lastProbe = "refresh added=\(added.count) dropped=\(dropped) total=\(result.count)\n" + LaunchServicesStore.lastProbe
         HALog.write("refresh done added=\(added.count) dropped=\(dropped) total=\(result.count)")
         return result
@@ -119,6 +128,7 @@ enum AppDiscoveryService {
         guard let path = MCMActivateContainerPath(2, bundleID, false, &err),
               PathSafety.isAppDataRoot(URL(fileURLWithPath: path))
         else { return false }
+        knownThirdParty.insert(bundleID)
         byID[bundleID] = InstalledApp(
             bundleID: bundleID,
             displayName: lastComponent(bundleID),
@@ -149,6 +159,7 @@ enum AppDiscoveryService {
                 displayName: lastComponent(bundleID),
                 dataContainerPath: path
             )
+            knownThirdParty.insert(bundleID)
         }
     }
 
