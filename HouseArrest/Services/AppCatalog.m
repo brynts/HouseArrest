@@ -65,7 +65,7 @@ static void addProxy(NSMutableDictionary *result, id app) {
 static NSDictionary *appsFromWorkspace(void) {
     NSMutableDictionary *result = [NSMutableDictionary dictionary];
     Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
-    probe(@"LSApplicationWorkspace class=%@", workspaceClass ?: @"nil");
+    probe(@"LSApplicationWorkspace class=%@", workspaceClass ? NSStringFromClass(workspaceClass) : @"nil");
     SEL defaultSel = NSSelectorFromString(@"defaultWorkspace");
     if (!workspaceClass || ![workspaceClass respondsToSelector:defaultSel]) return result;
     id workspace = ((id (*)(id, SEL))objc_msgSend)(workspaceClass, defaultSel);
@@ -175,9 +175,10 @@ static NSDictionary *appsFromContainerWalk(void) {
 
     NSArray *lines = [[NSString stringWithUTF8String:listed] componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]];
     free(listed);
+    NSString *sample = stringValue(lines.firstObject);
     probe(@"bad_query_list entries=%lu sample=%@",
           (unsigned long)lines.count,
-          lines.firstObject.length ? lines.firstObject : @"(empty)");
+          sample ?: @"(empty)");
 
     NSInteger grantOK = 0, grantMeta = 0, skipped = 0;
     for (NSString *raw in lines) {
