@@ -164,15 +164,101 @@ NSDictionary<NSString *, NSDictionary *> *HAInstalledAppCatalog(void) {
     return appsFromContainerWalk();
 }
 
+static id proxyForBundleID(NSString *bundleID) {
+    Class proxyClass = NSClassFromString(@"LSApplicationProxy");
+    SEL sel = NSSelectorFromString(@"applicationProxyForIdentifier:");
+    if (!proxyClass || ![proxyClass respondsToSelector:sel]) return nil;
+    return ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, sel, bundleID);
+}
+
 static NSData *iconDataFromProxy(id proxy) {
+    if (!proxy) return nil;
     SEL iconSel = NSSelectorFromString(@"iconDataForVariant:");
-    if (![proxy respondsToSelector:iconSel]) return nil;
-    const int variants[] = { 2, 0, 1, 3, 4, 5, 15 };
-    for (size_t i = 0; i < sizeof(variants) / sizeof(variants[0]); i++) {
-        id data = ((id (*)(id, SEL, int))objc_msgSend)(proxy, iconSel, variants[i]);
-        if ([data isKindOfClass:[NSData class]] && [data length] > 0) return data;
+    if ([proxy respondsToSelector:iconSel]) {
+        const int variants[] = { 2, 0, 1, 3, 4, 5, 15, 17, 18 };
+        for (size_t i = 0; i < sizeof(variants) / sizeof(variants[0]); i++) {
+            id data = ((id (*)(id, SEL, int))objc_msgSend)(proxy, iconSel, variants[i]);
+            if ([data isKindOfClass:[NSData class]] && [data length] > 32) return data;
+        }
+    }
+    SEL primarySel = NSSelectorFromString(@"primaryIconData");
+    if ([proxy respondsToSelector:primarySel]) {
+        id data = ((id (*)(id, SEL))objc_msgSend)(proxy, primarySel);
+        if ([data isKindOfClass:[NSData class]] && [data length] > 32) return data;
     }
     return nil;
+}
+
+static UIImage *iconFromBundlePath(NSString *bundlePath) {
+    if (!bundlePath.length) return nil;
+    int64_t handle = grantPath(bundlePath);
+    NSBundle *bundle = [NSBundle bundleWithPath:bundlePath];
+    NSDictionary *info = bundle.infoDictionary;
+    NSMutableArray<NSString *> *names = [NSMutableArray array];
+    id icons = info[@"CFBundleIcons"][@"CFBundlePrimaryIcon"][@"CFBundleIconFiles"];
+    if ([icons isKindOfClass:[NSArray class]]) [names addObjectsFromArray:icons];
+    id legacy = info[@"CFBundleIconFiles"];
+    if ([legacy isKindOfClass:[NSArray class]]) [names addObjectsFromArray:legacy];
+    if (stringValue(info[@"CFBundleIconFile"])) [names addObject:info[@"CFBundleIconFile"]];
+    [names addObjectsFromArray:@[ @"AppIcon60x60@2x", @"AppIcon76x76@2x~ipad", @"AppIcon", @"Icon@2x", @"Icon" ]];
+
+    UIImage *image = nil;
+    for (NSString *name in names) {
+        NSString *base = [name stringByDeletingPathExtension];
+        for (NSString *file in @[ name, [base stringByAppendingString:@".png"], [base stringByAppendingString:@"@2x.png"] ]) {
+            NSString *path = [bundlePath stringByAppendingPathComponent:file];
+            image = [UIImage imageWithContentsOfFile:path];
+            if (image) break;
+        }
+        if (image) break;
+    }
+    if (handle >= 0) bad_query_release(handle);
+    return image;
+}
+
+static NSString *nameFromBundlePath(NSString *bundlePath) {
+    if (!bundlePath.length) return nil;
+    int64_t handle = grantPath(bundlePath);
+    NSBundle *bundle = [NSBundle bundleWithPath:bundlePath];
+    NSDictionary *localized = bundle.localizedInfoDictionary;
+    NSDictionary *info = bundle.infoDictionary;
+    NSString *name = stringValue(localized[@"CFBundleDisplayName"])
+        ?: stringValue(localized[@"CFBundleName"])
+        ?: stringValue(info[@"CFBundleDisplayName"])
+        ?: stringValue(info[@"CFBundleName"]);
+    if (handle >= 0) bad_query_release(handle);
+    return name;
+}
+
+NSDictionary *HAPresentationForBundleID(NSString *bundleID) {
+    NSMutableDictionary *result = [NSMutableDictionary dictionary];
+    if (bundleID.length == 0) return result;
+
+    id proxy = proxyForBundleID(bundleID);
+    NSURL *bundleURL = nil;
+    SEL urlSel = NSSelectorFromString(@"bundleURL");
+    if ([proxy respondsToSelector:urlSel]) {
+        id value = ((id (*)(id, SEL))objc_msgSend)(proxy, urlSel);
+        if ([value isKindOfClass:[NSURL class]]) bundleURL = value;
+    }
+
+    NSString *name = nameFromBundlePath(bundleURL.path);
+    if (!name.length) {
+        for (NSString *selName in @[ @"localizedName", @"localizedShortName" ]) {
+            SEL sel = NSSelectorFromString(selName);
+            if (![proxy respondsToSelector:sel]) continue;
+            name = stringValue(((id (*)(id, SEL))objc_msgSend)(proxy, sel));
+            if (name.length) break;
+        }
+    }
+    if (name.length) result[@"name"] = name;
+
+    UIImage *icon = nil;
+    NSData *data = iconDataFromProxy(proxy);
+    if (data) icon = [UIImage imageWithData:data];
+    if (!icon) icon = iconFromBundlePath(bundleURL.path);
+    if (icon) result[@"icon"] = icon;
+    return result;
 }
 
 UIImage *HAIconForBundleID(NSString *bundleID) {
@@ -182,15 +268,7 @@ UIImage *HAIconForBundleID(NSString *bundleID) {
     dispatch_once(&once, ^{ cache = [NSCache new]; cache.countLimit = 256; });
     UIImage *cached = [cache objectForKey:bundleID];
     if (cached) return cached;
-
-    Class proxyClass = NSClassFromString(@"LSApplicationProxy");
-    SEL sel = NSSelectorFromString(@"applicationProxyForIdentifier:");
-    if (!proxyClass || ![proxyClass respondsToSelector:sel]) return nil;
-    id proxy = ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, sel, bundleID);
-    if (!proxy) return nil;
-    NSData *data = iconDataFromProxy(proxy);
-    if (!data) return nil;
-    UIImage *image = [UIImage imageWithData:data];
+    UIImage *image = HAPresentationForBundleID(bundleID)[@"icon"];
     if (image) [cache setObject:image forKey:bundleID];
     return image;
 }
