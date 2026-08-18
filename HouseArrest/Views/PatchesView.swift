@@ -1,6 +1,20 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum HADocumentTypes {
+    /// Custom type for .ha packages (also accept generic data so picker is not empty).
+    static var importTypes: [UTType] {
+        var types: [UTType] = [.data, .item, .content]
+        if let ha = UTType(filenameExtension: "ha") {
+            types.insert(ha, at: 0)
+        }
+        if let ha = UTType(exportedAs: "app.housearrest.package") {
+            types.insert(ha, at: 0)
+        }
+        return types
+    }
+}
+
 struct PatchesView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var showImporter = false
@@ -52,7 +66,7 @@ struct PatchesView: View {
             }
             .fileImporter(
                 isPresented: $showImporter,
-                allowedContentTypes: [UTType(filenameExtension: "ha") ?? .data],
+                allowedContentTypes: HADocumentTypes.importTypes,
                 allowsMultipleSelection: false
             ) { result in
                 handleImport(result)
@@ -87,6 +101,12 @@ struct PatchesView: View {
             guard let url = try result.get().first else { return }
             let accessed = url.startAccessingSecurityScopedResource()
             defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+
+            let ext = url.pathExtension.lowercased()
+            guard ext == "ha" || ext.isEmpty else {
+                throw PatchError.invalidPackage
+            }
+
             let data = try Data(contentsOf: url)
             let project = try HAPackageCodec.decode(data)
             appModel.addProject(project)
