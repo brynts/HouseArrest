@@ -9,6 +9,13 @@ struct AppsView: View {
     @State private var scanTitle = "Finding apps"
     @State private var scanCurrent = 0
     @State private var scanTotal = 0
+    @State private var scope: AppListScope = .thirdParty
+
+    private enum AppListScope: String, CaseIterable, Identifiable {
+        case thirdParty = "Third Party"
+        case system = "System"
+        var id: String { rawValue }
+    }
 
     private var filtered: [InstalledApp] {
         let q = search.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -42,7 +49,7 @@ struct AppsView: View {
                     )
                 } else if filtered.isEmpty {
                     ContentUnavailableView(
-                        "No third-party apps",
+                        scope == .thirdParty ? "No third-party apps" : "No system apps",
                         systemImage: "square.grid.2x2",
                         description: Text("Pull to refresh.")
                     )
@@ -79,6 +86,30 @@ struct AppsView: View {
             }
             .searchable(text: $search, prompt: "Name or bundle ID")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        ForEach(AppListScope.allCases) { option in
+                            Button {
+                                guard option != scope else { return }
+                                scope = option
+                                refresh()
+                            } label: {
+                                if option == scope {
+                                    Label(option.rawValue, systemImage: "checkmark")
+                                } else {
+                                    Text(option.rawValue)
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(scope.rawValue)
+                            Image(systemName: "chevron.down")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .foregroundStyle(HATheme.accent)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     if isLoading {
                         ProgressView()
@@ -138,8 +169,9 @@ struct AppsView: View {
         scanTitle = apps.isEmpty ? "Finding apps" : "Updating apps"
         scanCurrent = 0
         scanTotal = 0
+        let thirdPartyOnly = scope == .thirdParty
         HAWork.queue.async {
-            let list = AppDiscoveryService.discover(thirdPartyOnly: true) { title, current, total in
+            let list = AppDiscoveryService.discover(thirdPartyOnly: thirdPartyOnly) { title, current, total in
                 DispatchQueue.main.async {
                     scanTitle = title
                     scanCurrent = current
@@ -150,7 +182,7 @@ struct AppsView: View {
                 apps = list
                 isLoading = false
                 appModel.log(AppDiscoveryService.lastProbe)
-                appModel.log("apps scan third-party=\(list.count)")
+                appModel.log("apps scan \(thirdPartyOnly ? "third-party" : "system")=\(list.count)")
                 if list.isEmpty {
                     errorText = "No apps resolved. Copy logs from Settings."
                 }
@@ -413,9 +445,12 @@ struct AppDetailView: View {
     }
 
     private func askClean(_ area: AppCleanService.Area) {
+        let warning = app.isSystem
+            ? "This is a system app. Cleaning can break it."
+            : "Deletes files in \(area.title) for \(app.displayName)."
         pending = PendingClean(
             title: "Clean \(area.title)?",
-            detail: "Deletes files in \(area.title) for \(app.displayName).",
+            detail: warning,
             areas: [area]
         )
     }
