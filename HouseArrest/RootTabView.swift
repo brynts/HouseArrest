@@ -11,6 +11,9 @@ struct RootTabView: View {
             Tab("Apps", systemImage: "square.grid.2x2.fill", value: AppTab.apps) {
                 AppsView()
             }
+            Tab("Cleaner", systemImage: "trash.fill", value: AppTab.cleaner) {
+                CleanerView()
+            }
             Tab("Settings", systemImage: "gearshape.fill", value: AppTab.settings) {
                 SettingsView()
             }
@@ -22,5 +25,6 @@ struct RootTabView: View {
 enum AppTab: Hashable {
     case home
     case apps
+    case cleaner
     case settings
 }

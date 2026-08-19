@@ -37,6 +37,7 @@
 		A10000000000000000000021 /* FolderBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000021 /* FolderBrowserView.swift */; };
 		A10000000000000000000022 /* BrowseSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000022 /* BrowseSupport.swift */; };
 		A10000000000000000000023 /* CreatePatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000023 /* CreatePatchView.swift */; };
+		A10000000000000000000024 /* CleanerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000024 /* CleanerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -76,6 +77,7 @@
 		B10000000000000000000021 /* FolderBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderBrowserView.swift; sourceTree = "<group>"; };
 		B10000000000000000000022 /* BrowseSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowseSupport.swift; sourceTree = "<group>"; };
 		B10000000000000000000023 /* CreatePatchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreatePatchView.swift; sourceTree = "<group>"; };
+		B10000000000000000000024 /* CleanerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanerView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -155,6 +157,7 @@
 			children = (
 				B1000000000000000000000A /* HomeView.swift */,
 				B10000000000000000000019 /* AppsView.swift */,
+				B10000000000000000000024 /* CleanerView.swift */,
 				B1000000000000000000001E /* ContainerBrowserView.swift */,
 				B10000000000000000000021 /* FolderBrowserView.swift */,
 				B10000000000000000000022 /* BrowseSupport.swift */,
@@ -280,6 +283,7 @@
 				A10000000000000000000021 /* FolderBrowserView.swift in Sources */,
 				A10000000000000000000022 /* BrowseSupport.swift in Sources */,
 				A10000000000000000000023 /* CreatePatchView.swift in Sources */,
+				A10000000000000000000024 /* CleanerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
