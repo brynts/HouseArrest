@@ -89,12 +89,13 @@ enum AppDiscoveryService {
     ) -> [InstalledApp] {
         progress?("Updating apps", 0, 0)
         var byID = Dictionary(uniqueKeysWithValues: cachedApps.map { ($0.bundleID, $0) })
-        var dropped = 0
+        var droppedIDs: [String] = []
         for (id, app) in byID {
             guard let path = app.dataContainerPath,
                   FileManager.default.fileExists(atPath: path) else {
                 byID.removeValue(forKey: id)
-                dropped += 1
+                droppedIDs.append(id)
+                MCMInvalidateContainer(2, id, false)
                 HALog.write("refresh drop \(id)")
                 continue
             }
@@ -103,11 +104,13 @@ enum AppDiscoveryService {
         let folders = listApplicationContainers()
         let newFolders = folders.filter { !seenUUIDs.contains(containerUUID($0)) }
         seenUUIDs.formUnion(folders.map(containerUUID))
-        HALog.write("refresh folders=\(folders.count) new=\(newFolders.count)")
+        HALog.write("refresh folders=\(folders.count) new=\(newFolders.count) retry=\(droppedIDs.count)")
 
         var added: [String: InstalledApp] = [:]
         for folder in newFolders {
-            _ = GrantCache.grantOnce(path: folder)
+            var pathC = Array(folder.utf8CString)
+            let handle = bad_query(&pathC, true, nil, false)
+            defer { if handle >= 0 { bad_query_release(handle) } }
             guard let bundleID = bundleID(fromContainer: folder) else { continue }
             if thirdPartyOnly && isSystemBundle(bundleID) { continue }
             if byID[bundleID] != nil { continue }
@@ -120,6 +123,12 @@ enum AppDiscoveryService {
             HALog.write("refresh add \(bundleID)")
         }
 
+        for bundleID in droppedIDs {
+            guard addIfNeeded(bundleID, into: &byID, thirdPartyOnly: thirdPartyOnly) else { continue }
+            added[bundleID] = byID[bundleID]
+            HALog.write("refresh retry \(bundleID)")
+        }
+
         if !added.isEmpty {
             let extra = enrich(added, progress: progress)
             for (id, app) in extra { byID[id] = app }
@@ -129,8 +138,8 @@ enum AppDiscoveryService {
             $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
         }
         cachedApps = result
-        lastProbe = "refresh added=\(added.count) dropped=\(dropped) folders=\(folders.count) new=\(newFolders.count)"
-        HALog.write("refresh done added=\(added.count) dropped=\(dropped) total=\(result.count)")
+        lastProbe = "refresh added=\(added.count) dropped=\(droppedIDs.count) folders=\(folders.count) new=\(newFolders.count)"
+        HALog.write("refresh done added=\(added.count) dropped=\(droppedIDs.count) total=\(result.count)")
         return result
     }
 
@@ -181,26 +190,40 @@ enum AppDiscoveryService {
 
     private static func listApplicationContainers() -> [String] {
         let parents = [
-            "/private/var/mobile/Containers/Data/Application",
-            "/var/mobile/Containers/Data/Application"
+            "/var/mobile/Containers/Data/Application",
+            "/private/var/mobile/Containers/Data/Application"
         ]
         var seen = Set<String>()
         var result: [String] = []
         for parent in parents {
-            _ = GrantCache.grantOnce(path: parent)
             var pathC = Array(parent.utf8CString)
-            guard let listed = bad_query_list(&pathC, 400000) else { continue }
-            let blob = String(cString: listed)
-            free(listed)
-            let names = blob.split(whereSeparator: \.isNewline).compactMap { line -> String? in
-                let name = URL(fileURLWithPath: String(line)).lastPathComponent
-                return isUUID(name) ? name : nil
+            let handle = bad_query(&pathC, true, nil, false)
+            HALog.write("list grant \(parent)=\(handle)")
+            if handle >= 0 {
+                if let names = try? FileManager.default.contentsOfDirectory(atPath: parent) {
+                    let uuids = names.filter(isUUID)
+                    HALog.write("list fm \(parent) count=\(uuids.count)")
+                    for name in uuids {
+                        let path = normalizePath((parent as NSString).appendingPathComponent(name))
+                        if seen.insert(path).inserted { result.append(path) }
+                    }
+                }
+                bad_query_release(handle)
             }
-            HALog.write("list \(parent) count=\(names.count)")
-            for name in names {
-                let path = normalizePath((parent as NSString).appendingPathComponent(name))
-                if seen.insert(path).inserted {
-                    result.append(path)
+            if result.isEmpty {
+                var listPath = Array(parent.utf8CString)
+                if let listed = bad_query_list(&listPath, 2_000_000) {
+                    let blob = String(cString: listed)
+                    free(listed)
+                    let names = blob.split(whereSeparator: \.isNewline).compactMap { line -> String? in
+                        let name = URL(fileURLWithPath: String(line)).lastPathComponent
+                        return isUUID(name) ? name : nil
+                    }
+                    HALog.write("list bq \(parent) count=\(names.count)")
+                    for name in names {
+                        let path = normalizePath((parent as NSString).appendingPathComponent(name))
+                        if seen.insert(path).inserted { result.append(path) }
+                    }
                 }
             }
         }
@@ -209,7 +232,9 @@ enum AppDiscoveryService {
 
     private static func bundleID(fromContainer path: String) -> String? {
         let meta = (path as NSString).appendingPathComponent(".com.apple.mobile_container_manager.metadata.plist")
-        _ = GrantCache.grantOnce(path: meta)
+        var pathC = Array(meta.utf8CString)
+        let handle = bad_query(&pathC, true, nil, false)
+        defer { if handle >= 0 { bad_query_release(handle) } }
         guard let dict = NSDictionary(contentsOfFile: meta) as? [String: Any] else { return nil }
         if let id = dict["MCMMetadataIdentifier"] as? String, id.contains(".") { return id }
         if let id = dict["MCMApplicationIdentifier"] as? String, id.contains(".") { return id }
