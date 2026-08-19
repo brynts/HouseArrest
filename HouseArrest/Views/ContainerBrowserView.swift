@@ -87,7 +87,7 @@ struct ContainerBrowserView: View {
                             }
                         }
                     }
-                    Button("Open group ID…") { askGroup = true }
+                    Button("Open group ID...") { askGroup = true }
                 } header: {
                     Text("App Groups")
                 } footer: {
@@ -163,37 +163,42 @@ struct ContainerBrowserView: View {
             var found: [(String, String)] = []
             for groupID in AppGroupLookup.remembered(for: bundleID) {
                 if let path = AppGroupLookup.resolve(groupID) {
-                    settleGrant(path: path, groupID: groupID)
                     found.append((groupID, path))
                 }
             }
             DispatchQueue.main.async {
                 groups = found
                 loading = false
-                appModel.log("browse roots app=\(dataPath == nil ? 0 : 1) groups=\(found.count)")
+                appModel.log("browse roots app=\(bundleID) groups=\(found.count)")
             }
         }
     }
 
     private func openCustomGroup() {
-        let id = customID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !id.isEmpty else { return }
+        var id = customID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !id.isEmpty, !id.hasPrefix("group.") { id = "group." + id }
+        guard id.hasPrefix("group."), id.split(separator: ".").count >= 3 else {
+            errorText = "Use a group ID like group.example.app"
+            return
+        }
+        let bundleID = app.bundleID
+        appModel.log("add group start \(id) app=\(bundleID)")
         HAWork.queue.async {
-            guard let path = AppGroupLookup.resolve(id) else {
-                DispatchQueue.main.async {
-                    errorText = "Could not open \(id)"
-                    appModel.log("browse group miss \(id)")
-                }
-                return
+            let path = AppGroupLookup.resolve(id)
+            if let path {
+                AppGroupLookup.remember(id, for: bundleID)
             }
-            settleGrant(path: path, groupID: id)
-            AppGroupLookup.remember(id, for: app.bundleID)
             DispatchQueue.main.async {
-                if !groups.contains(where: { $0.id == id }) {
-                    groups.append((id, path))
+                if let path {
+                    if !groups.contains(where: { $0.id == id }) {
+                        groups.append((id, path))
+                    }
+                    customID = ""
+                    appModel.log("add group ok \(id)")
+                } else {
+                    errorText = "Could not open \(id)"
+                    appModel.log("add group miss \(id)")
                 }
-                customID = ""
-                appModel.log("browse group ok \(id)")
             }
         }
     }
