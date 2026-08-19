@@ -2,54 +2,26 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject private var appModel: AppModel
-    @State private var showLogs = false
-    @State private var showSettings = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     header
-
                     statusCard
-
                     deviceCard
                 }
                 .padding(16)
             }
-            .background(Color.black.ignoresSafeArea())
+            .background(HATheme.screen.ignoresSafeArea())
             .navigationBarHidden(true)
-            .sheet(isPresented: $showLogs) { LogsView() }
-            .sheet(isPresented: $showSettings) { SettingsView() }
         }
     }
 
     private var header: some View {
-        HStack(alignment: .center) {
-            Text("HouseArrest")
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-
-            Spacer()
-
-            Button { showLogs = true } label: {
-                Image(systemName: "terminal.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(HATheme.accent)
-                    .frame(width: 36, height: 36)
-                    .background(HATheme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-            .accessibilityLabel("Logs")
-
-            Button { showSettings = true } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(HATheme.accent)
-                    .frame(width: 36, height: 36)
-                    .background(HATheme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-            .accessibilityLabel("Settings")
-        }
+        Text("HouseArrest")
+            .font(.system(size: 28, weight: .bold, design: .rounded))
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var statusCard: some View {
@@ -83,7 +55,6 @@ struct HomeView: View {
                 .foregroundStyle(HATheme.secondaryText)
             Text(value)
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(.white)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -97,12 +68,11 @@ struct HomeView: View {
                 .padding(.bottom, 10)
 
             row("Hardware model", d.hardwareModel)
-            Divider().background(HATheme.cardStroke)
+            Divider()
             row("iOS Version", "\(d.systemVersion) (\(d.buildNumber))")
-            Divider().background(HATheme.cardStroke)
+            Divider()
             HStack {
                 Text("Compatibility")
-                    .foregroundStyle(.white)
                 Spacer()
                 if d.isSupported {
                     Label("Supported", systemImage: "checkmark.circle.fill")
@@ -130,7 +100,7 @@ struct HomeView: View {
 
     private func row(_ title: String, _ value: String) -> some View {
         HStack {
-            Text(title).foregroundStyle(.white)
+            Text(title)
             Spacer()
             Text(value).foregroundStyle(HATheme.secondaryText)
         }

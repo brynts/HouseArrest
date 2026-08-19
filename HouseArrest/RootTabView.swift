@@ -5,18 +5,15 @@ struct RootTabView: View {
 
     var body: some View {
         TabView(selection: $appModel.selectedTab) {
-            HomeView()
-                .tabItem { Label("Home", systemImage: "house.fill") }
-                .tag(AppTab.home)
-
-            AppsView()
-                .tabItem { Label("Apps", systemImage: "square.grid.2x2.fill") }
-                .tag(AppTab.apps)
-
-            // Keep Patches reachable while Apps detail Patch action is scaffolded.
-            PatchesView()
-                .tabItem { Label("Patches", systemImage: "shippingbox.fill") }
-                .tag(AppTab.patches)
+            Tab("Home", systemImage: "house.fill", value: AppTab.home) {
+                HomeView()
+            }
+            Tab("Apps", systemImage: "square.grid.2x2.fill", value: AppTab.apps) {
+                AppsView()
+            }
+            Tab("Settings", systemImage: "gearshape.fill", value: AppTab.settings) {
+                SettingsView()
+            }
         }
         .tint(HATheme.accent)
     }
@@ -25,5 +22,5 @@ struct RootTabView: View {
 enum AppTab: Hashable {
     case home
     case apps
-    case patches
+    case settings
 }

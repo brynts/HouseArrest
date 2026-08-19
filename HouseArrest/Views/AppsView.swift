@@ -6,6 +6,9 @@ struct AppsView: View {
     @State private var isLoading = false
     @State private var search = ""
     @State private var errorText: String?
+    @State private var scanTitle = "Finding apps"
+    @State private var scanCurrent = 0
+    @State private var scanTotal = 0
 
     private var filtered: [InstalledApp] {
         let q = search.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -20,8 +23,17 @@ struct AppsView: View {
         NavigationStack {
             Group {
                 if isLoading && apps.isEmpty {
-                    ProgressView("Scanning apps…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Text(scanTitle)
+                            .font(.headline)
+                        if scanTotal > 0 {
+                            Text("\(scanCurrent)/\(scanTotal)")
+                                .font(.title3.monospacedDigit())
+                                .foregroundStyle(HATheme.secondaryText)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let errorText, apps.isEmpty {
                     ContentUnavailableView(
                         "Could not list apps",
@@ -36,26 +48,45 @@ struct AppsView: View {
                     )
                 } else {
                     List(filtered) { app in
-                        NavigationLink(value: app) {
+                        NavigationLink(value: app.bundleID) {
                             appRow(app)
                         }
                     }
                     .listStyle(.insetGrouped)
+                    .overlay(alignment: .top) {
+                        if isLoading {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                Text(scanTotal > 0 ? "\(scanTitle)  \(scanCurrent)/\(scanTotal)" : scanTitle)
+                                    .font(.footnote)
+                            }
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity)
+                            .background(HATheme.card.opacity(0.95))
+                        }
+                    }
                 }
             }
-            .background(Color.black)
+            .background(Color(.systemBackground))
             .navigationTitle("Apps")
-            .navigationDestination(for: InstalledApp.self) { app in
-                AppDetailView(app: app)
+            .navigationDestination(for: String.self) { bundleID in
+                if let app = apps.first(where: { $0.bundleID == bundleID }) {
+                    AppDetailView(app: app)
+                } else {
+                    ContentUnavailableView("App not found", systemImage: "app")
+                }
             }
             .searchable(text: $search, prompt: "Name or bundle ID")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: refresh) {
-                        Image(systemName: "arrow.clockwise")
-                            .foregroundStyle(HATheme.accent)
+                    if isLoading {
+                        ProgressView()
+                    } else {
+                        Button(action: refresh) {
+                            Image(systemName: "arrow.clockwise")
+                                .foregroundStyle(HATheme.accent)
+                        }
                     }
-                    .disabled(isLoading)
                 }
             }
             .refreshable { refresh() }
@@ -100,21 +131,24 @@ struct AppsView: View {
     }
 
     private func refresh() {
+        if isLoading { return }
         isLoading = true
         errorText = nil
-        DispatchQueue.global(qos: .userInitiated).async {
-            let list = AppDiscoveryService.discover(thirdPartyOnly: true)
-            let probe = [
-                HACatalogLastProbe(),
-                LaunchServicesStore.lastProbe,
-                AppDiscoveryService.lastProbe
-            ].joined(separator: "\n")
+        scanTitle = apps.isEmpty ? "Finding apps" : "Updating apps"
+        scanCurrent = 0
+        scanTotal = 0
+        HAWork.queue.async {
+            let list = AppDiscoveryService.discover(thirdPartyOnly: true) { title, current, total in
+                DispatchQueue.main.async {
+                    scanTitle = title
+                    scanCurrent = current
+                    scanTotal = total
+                }
+            }
             DispatchQueue.main.async {
                 apps = list
                 isLoading = false
-                for line in probe.split(separator: "\n") where !line.isEmpty {
-                    appModel.log(String(line))
-                }
+                appModel.log(AppDiscoveryService.lastProbe)
                 appModel.log("apps scan third-party=\(list.count)")
                 if list.isEmpty {
                     errorText = "No apps resolved. Copy logs from Settings."
@@ -130,6 +164,22 @@ struct AppDetailView: View {
     @State private var message: String?
     @State private var usage: ContainerUsage?
     @State private var measuring = false
+    @State private var busy = false
+    @State private var pending: PendingClean?
+    @State private var showBrowse = false
+
+    private var installed: InstalledPatchRecord? {
+        appModel.installedPatches[app.bundleID]
+    }
+
+    private var canUnpatch: Bool { installed != nil && !busy }
+
+    private struct PendingClean: Identifiable {
+        let id = UUID()
+        let title: String
+        let detail: String
+        let areas: [AppCleanService.Area]
+    }
 
     var body: some View {
         List {
@@ -156,49 +206,75 @@ struct AppDetailView: View {
                             .font(.caption.monospaced())
                             .foregroundStyle(HATheme.secondaryText)
                             .textSelection(.enabled)
-                        if let path = app.dataContainerPath {
-                            Text(path)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
-                        }
                     }
                 }
                 .padding(.vertical, 4)
             }
 
             Section("Actions") {
-                Button { stub("Backup") } label: {
-                    Label("Backup", systemImage: "externaldrive.badge.timemachine")
+                Button {
+                    showBrowse = true
+                } label: {
+                    HStack {
+                        Label("Browse files", systemImage: "folder")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
                 }
-                Button { stub("Browse files") } label: {
-                    Label("Browse files", systemImage: "folder")
+                .foregroundStyle(.primary)
+                Button(action: pickPatch) {
+                    Label(busy ? "Applying…" : "Patch", systemImage: "wrench.and.screwdriver")
                 }
-                Button { stub("Patch") } label: {
-                    Label("Patch", systemImage: "wrench.and.screwdriver")
+                .disabled(busy)
+            }
+
+            Section {
+                if let installed {
+                    Text(installed.projectName)
+                    Text("\(installed.receipt.entries.count) file(s)")
+                        .font(.caption)
+                        .foregroundStyle(HATheme.secondaryText)
+                } else {
+                    Text("Not patched")
+                        .foregroundStyle(HATheme.secondaryText)
                 }
+                Button(action: unpatch) {
+                    Text("Unpatch")
+                        .frame(maxWidth: .infinity)
+                }
+                .disabled(!canUnpatch)
+                .foregroundStyle(canUnpatch ? Color.red : Color.secondary)
+            } header: {
+                Text("Patch")
+            } footer: {
+                Text(installed == nil
+                     ? "Import a .ha package to patch this app."
+                     : "Unpatch restores the original files from backup.")
             }
 
             Section {
                 if measuring && usage == nil {
                     ProgressView()
                 } else {
-                    dataRow("Documents", usage?.documentsLabel) { stub("Clean Documents") }
-                    dataRow("Caches", usage?.cachesLabel) { stub("Clean Caches") }
-                    dataRow("tmp", usage?.tmpLabel) { stub("Clean tmp") }
-                }
-                Button(role: .destructive) { stub("Reset app data") } label: {
-                    Label("Reset app data", systemImage: "arrow.counterclockwise")
+                    dataRow("Documents", usage?.documentsLabel) { askClean(.documents) }
+                    dataRow("Caches", usage?.cachesLabel) { askClean(.caches) }
+                    dataRow("tmp", usage?.tmpLabel) { askClean(.tmp) }
                 }
             } header: {
                 Text("Data")
             } footer: {
-                Text("Backup / Browse / Patch / Clean will be wired next.")
+                Text(busy ? "Working…" : "Clean empties Documents, Caches, or tmp.")
             }
         }
         .navigationTitle(app.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: loadUsage)
+        .fullScreenCover(isPresented: $showBrowse) {
+            ContainerBrowserView(app: app)
+                .environmentObject(appModel)
+        }
         .alert("Apps", isPresented: Binding(
             get: { message != nil },
             set: { if !$0 { message = nil } }
@@ -206,6 +282,21 @@ struct AppDetailView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(message ?? "")
+        }
+        .confirmationDialog(
+            pending?.title ?? "Clean",
+            isPresented: Binding(
+                get: { pending != nil },
+                set: { if !$0 { pending = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Clean", role: .destructive) {
+                if let pending { runClean(pending.areas) }
+            }
+            Button("Cancel", role: .cancel) { pending = nil }
+        } message: {
+            Text(pending?.detail ?? "")
         }
     }
 
@@ -219,31 +310,104 @@ struct AppDetailView: View {
             }
             Spacer()
             Button(action: action) {
-                Text("Clean")
-                    .font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 6)
-                    .background(HATheme.accent.opacity(0.18), in: Capsule())
-                    .foregroundStyle(HATheme.accent)
+                if busy {
+                    ProgressView()
+                } else {
+                    Text("Clean")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        .background(HATheme.accent.opacity(0.18), in: Capsule())
+                        .foregroundStyle(HATheme.accent)
+                }
             }
             .buttonStyle(.plain)
+            .disabled(busy || app.dataContainerPath == nil)
+        }
+    }
+
+    private func pickPatch() {
+        HADocumentPicker.presentHA { data in
+            guard let data else { return }
+            applyPatch(data)
+        }
+    }
+
+    private func applyPatch(_ data: Data) {
+        busy = true
+        defer { busy = false }
+        do {
+            let project = try HAPackageCodec.decode(data)
+            let receipt = try PatchApplyService.apply(project: project) { appModel.log($0) }
+            appModel.addProject(project)
+            appModel.markPatched(bundleID: app.bundleID, projectName: project.name, receipt: receipt)
+            message = "Applied \(receipt.entries.count) file(s) from \(project.name)."
+            appModel.log("apply ok project=\(project.name) files=\(receipt.entries.count)")
+        } catch {
+            message = error.localizedDescription
+            appModel.log("apply failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func unpatch() {
+        guard let installed else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            try PatchApplyService.restore(receipt: installed.receipt) { appModel.log($0) }
+            appModel.clearPatch(bundleID: app.bundleID)
+            message = "Restored original files."
+        } catch {
+            message = error.localizedDescription
+            appModel.log("unpatch failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func askClean(_ area: AppCleanService.Area) {
+        pending = PendingClean(
+            title: "Clean \(area.title)?",
+            detail: "Deletes files in \(area.title) for \(app.displayName).",
+            areas: [area]
+        )
+    }
+
+    private func runClean(_ areas: [AppCleanService.Area]) {
+        busy = true
+        HAWork.queue.async {
+            do {
+                let removed = try AppCleanService.clean(
+                    bundleID: app.bundleID,
+                    containerPath: app.dataContainerPath,
+                    areas: areas,
+                    log: { line in
+                        DispatchQueue.main.async { appModel.log(line) }
+                    }
+                )
+                let result = app.dataContainerPath.map { AppDiscoveryService.usage(for: $0) }
+                DispatchQueue.main.async {
+                    if let result { usage = result }
+                    busy = false
+                    message = "Removed \(removed) item\(removed == 1 ? "" : "s")."
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    busy = false
+                    message = error.localizedDescription
+                    appModel.log("clean failed \(app.bundleID): \(error.localizedDescription)")
+                }
+            }
         }
     }
 
     private func loadUsage() {
         guard let path = app.dataContainerPath, usage == nil else { return }
         measuring = true
-        DispatchQueue.global(qos: .userInitiated).async {
+        HAWork.queue.async {
             let result = AppDiscoveryService.usage(for: path)
             DispatchQueue.main.async {
                 usage = result
                 measuring = false
             }
         }
-    }
-
-    private func stub(_ action: String) {
-        message = "\(action) for \(app.bundleID) — coming next."
-        appModel.log("apps action stub: \(action) → \(app.bundleID)")
     }
 }

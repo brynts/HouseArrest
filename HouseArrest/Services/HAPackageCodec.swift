@@ -64,3 +64,12 @@ enum HAPackageCodec {
         return payload.project
     }
 }
+
+extension FileManager {
+    func zipItem(at source: URL, to destination: URL) throws {
+        if fileExists(atPath: destination.path) {
+            try removeItem(at: destination)
+        }
+        try copyItem(at: source, to: destination)
+    }
+}

@@ -1,0 +1,146 @@
+import Foundation
+import UIKit
+
+enum BrowseClipboard {
+    static var items: [BrowseItem] = []
+    static var move = false
+    static var hasItems: Bool { !items.isEmpty }
+    static func copy(_ list: [BrowseItem], move: Bool) {
+        items = list
+        self.move = move
+    }
+}
+
+enum FileOps {
+    static func delete(_ paths: [String], rootPath: String) throws {
+        for path in paths {
+            try within(rootPath, path)
+            try FileManager.default.removeItem(atPath: path)
+        }
+    }
+
+    static func rename(_ path: String, to name: String, folder: String, rootPath: String) throws {
+        try within(rootPath, path)
+        let dest = try uniquePath(in: folder, name: name, rootPath: rootPath)
+        try FileManager.default.moveItem(atPath: path, toPath: dest)
+    }
+
+    static func paste(into folder: String, rootPath: String) throws {
+        try within(rootPath, folder)
+        for item in BrowseClipboard.items {
+            let dest = uniqueURL(in: folder, name: item.name)
+            if BrowseClipboard.move {
+                try FileManager.default.moveItem(at: URL(fileURLWithPath: item.path), to: dest)
+            } else {
+                try FileManager.default.copyItem(at: URL(fileURLWithPath: item.path), to: dest)
+            }
+        }
+        if BrowseClipboard.move { BrowseClipboard.items = [] }
+    }
+
+    static func uniquePath(in folder: String, name: String, rootPath: String) throws -> String {
+        try within(rootPath, folder)
+        return uniqueURL(in: folder, name: name).path
+    }
+
+    private static func uniqueURL(in folder: String, name: String) -> URL {
+        var dest = URL(fileURLWithPath: folder).appendingPathComponent(name)
+        var i = 2
+        while FileManager.default.fileExists(atPath: dest.path) {
+            let base = (name as NSString).deletingPathExtension
+            let ext = (name as NSString).pathExtension
+            dest = URL(fileURLWithPath: folder).appendingPathComponent(
+                ext.isEmpty ? "\(base) \(i)" : "\(base) \(i).\(ext)"
+            )
+            i += 1
+        }
+        return dest
+    }
+
+    private static func within(_ root: String, _ path: String) throws {
+        let r = URL(fileURLWithPath: root).standardizedFileURL.path
+        let p = URL(fileURLWithPath: path).standardizedFileURL.path
+        guard p == r || p.hasPrefix(r + "/") else { throw PatchError.unsafePath }
+    }
+}
+
+enum AppGroupLookup {
+    static func resolve(_ groupID: String) -> String? {
+        var err: NSString?
+        if let path = MCMActivateContainerPath(7, groupID, true, &err),
+           PathSafety.isAppGroupRoot(URL(fileURLWithPath: path)) {
+            return path
+        }
+        err = nil
+        if let path = MCMActivateContainerPath(7, groupID, false, &err),
+           PathSafety.isAppGroupRoot(URL(fileURLWithPath: path)) {
+            return path
+        }
+        return nil
+    }
+
+    static func remember(_ groupID: String, for bundleID: String) {
+        var list = remembered(for: bundleID)
+        if !list.contains(groupID) {
+            list.insert(groupID, at: 0)
+            UserDefaults.standard.set(list, forKey: key(bundleID))
+        }
+    }
+
+    static func remembered(for bundleID: String) -> [String] {
+        UserDefaults.standard.stringArray(forKey: key(bundleID)) ?? []
+    }
+
+    private static func key(_ bundleID: String) -> String {
+        "ha.groups.\(bundleID)"
+    }
+}
+
+enum ContainerLister {
+    static func list(path: String, rootPath: String) throws -> [BrowseItem] {
+        let root = URL(fileURLWithPath: rootPath).standardizedFileURL.path
+        let current = URL(fileURLWithPath: path).standardizedFileURL.path
+        guard current == root || current.hasPrefix(root + "/") else {
+            throw PatchError.unsafePath
+        }
+        let urls = try FileManager.default.contentsOfDirectory(
+            at: URL(fileURLWithPath: current),
+            includingPropertiesForKeys: [
+                .isDirectoryKey, .fileSizeKey, .isSymbolicLinkKey,
+                .creationDateKey, .contentModificationDateKey
+            ],
+            options: []
+        )
+        return urls.map { url in
+            let values = try? url.resourceValues(forKeys: [
+                .isDirectoryKey, .fileSizeKey, .isSymbolicLinkKey,
+                .creationDateKey, .contentModificationDateKey
+            ])
+            return BrowseItem(
+                name: url.lastPathComponent,
+                path: url.path,
+                isDirectory: values?.isDirectory == true,
+                isSymlink: values?.isSymbolicLink == true,
+                size: Int64(values?.fileSize ?? 0),
+                created: values?.creationDate,
+                modified: values?.contentModificationDate
+            )
+        }
+    }
+
+    static func exportCopy(path: String) throws -> URL {
+        let src = URL(fileURLWithPath: path)
+        let dest = FileManager.default.temporaryDirectory.appendingPathComponent(src.lastPathComponent)
+        if FileManager.default.fileExists(atPath: dest.path) {
+            try FileManager.default.removeItem(at: dest)
+        }
+        try FileManager.default.copyItem(at: src, to: dest)
+        return dest
+    }
+}
+
+func settleGrant(path: String, groupID: String?) {
+    if GrantCache.contains(path) { return }
+    let handle = GrantCache.grantOnce(path: path, groupID: groupID)
+    if handle > 0 { Thread.sleep(forTimeInterval: 0.2) }
+}

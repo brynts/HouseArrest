@@ -55,6 +55,12 @@ struct PatchProject: Identifiable, Codable, Hashable {
     var groupTargetCount: Int { rules.filter(\.isAppGroup).count }
 }
 
+struct InstalledPatchRecord: Codable {
+    var bundleID: String
+    var projectName: String
+    var receipt: ApplyReceipt
+}
+
 enum PatchError: LocalizedError {
     case invalidTarget
     case unsafePath
@@ -62,6 +68,7 @@ enum PatchError: LocalizedError {
     case accessDenied(String)
     case applyFailed(String)
     case invalidPackage
+    case nothingToRestore
 
     var errorDescription: String? {
         switch self {
@@ -71,6 +78,7 @@ enum PatchError: LocalizedError {
         case .accessDenied(let id): return "Access denied: \(id)"
         case .applyFailed(let detail): return "Apply failed: \(detail)"
         case .invalidPackage: return "Invalid or corrupted package."
+        case .nothingToRestore: return "No backup to restore."
         }
     }
 }

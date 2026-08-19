@@ -1,6 +1,57 @@
 import Foundation
 
-/// Pluggable container access.
+enum HALog {
+    static var url: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("housearrest.log")
+    }
+
+    static func write(_ message: String) {
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let line = "\(stamp)  \(message)\n"
+        guard let data = line.data(using: .utf8) else { return }
+        if FileManager.default.fileExists(atPath: url.path),
+           let handle = try? FileHandle(forWritingTo: url) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: data)
+        } else {
+            try? data.write(to: url)
+        }
+    }
+
+    static func read() -> String {
+        (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+    }
+
+    static func recentLines(_ max: Int = 400) -> [String] {
+        Array(read().split(whereSeparator: \.isNewline).map(String.init).suffix(max).reversed())
+    }
+}
+
+enum GrantCache {
+    private static var paths = Set<String>()
+
+    static func contains(_ path: String) -> Bool { paths.contains(path) }
+    static func mark(_ path: String) { paths.insert(path) }
+
+    static func grantOnce(path: String, groupID: String? = nil) -> Int64 {
+        if paths.contains(path) { return 0 }
+        HALog.write("grant \(path)")
+        var pathC = Array(path.utf8CString)
+        let handle: Int64
+        if let groupID {
+            var groupC = Array(groupID.utf8CString)
+            handle = bad_query(&pathC, true, &groupC, true)
+        } else {
+            handle = bad_query(&pathC, true, nil, false)
+        }
+        HALog.write("grant result=\(handle)")
+        if handle >= 0 { paths.insert(path) }
+        return handle
+    }
+}
+
 protocol ContainerAccessing: AnyObject {
     func resolveRoot(targetID: String) throws -> URL
     func grant(root: URL, targetID: String) throws -> AccessToken
@@ -11,7 +62,6 @@ struct AccessToken {
     let release: () -> Void
 }
 
-/// MCM activate + bad_query grant (original: forcequitOS/bad_query).
 final class MHAContainerAccess: ContainerAccessing {
     private static let appGroupMCMClass: UInt64 = 7
 
@@ -31,20 +81,13 @@ final class MHAContainerAccess: ContainerAccessing {
 
     func grant(root: URL, targetID: String) throws -> AccessToken {
         let id = try PathSafety.validateTargetID(targetID)
-        // Same pattern as 3105 ContainerStore.grantContainerAccess
-        var pathC = Array(root.path.utf8CString)
-        let handle: Int64
-        if id.hasPrefix("group.") {
-            var groupC = Array(id.utf8CString)
-            handle = bad_query(&pathC, true, &groupC, true)
-        } else {
-            handle = bad_query(&pathC, true, nil, false)
-        }
-        guard handle >= 0 else {
-            throw PatchError.accessDenied(id)
-        }
+        let handle = GrantCache.grantOnce(
+            path: root.path,
+            groupID: id.hasPrefix("group.") ? id : nil
+        )
+        guard handle >= 0 else { throw PatchError.accessDenied(id) }
         return AccessToken(id: handle) {
-            bad_query_release(handle)
+            if handle > 0 { bad_query_release(handle) }
         }
     }
 
@@ -65,18 +108,13 @@ final class MHAContainerAccess: ContainerAccessing {
         ]
         for (cls, asGroup) in attempts {
             var err: NSString?
-            guard let path = MCMActivateContainerPath(cls, groupID, asGroup, &err) else {
-                continue
-            }
-            if PathSafety.isAppGroupRoot(URL(fileURLWithPath: path)) {
-                return path
-            }
+            guard let path = MCMActivateContainerPath(cls, groupID, asGroup, &err) else { continue }
+            if PathSafety.isAppGroupRoot(URL(fileURLWithPath: path)) { return path }
         }
         return nil
     }
 }
 
-/// Stub for simulator / when exploit is unavailable.
 final class StubContainerAccess: ContainerAccessing {
     func resolveRoot(targetID: String) throws -> URL {
         throw PatchError.targetUnavailable(targetID)

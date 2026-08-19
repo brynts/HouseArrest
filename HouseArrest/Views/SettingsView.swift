@@ -2,12 +2,21 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var appModel: AppModel
-    @Environment(\.dismiss) private var dismiss
+    @AppStorage("ha.appearance") private var appearanceRaw = HAAppearance.system.rawValue
     @State private var copied = false
 
     var body: some View {
         NavigationStack {
             List {
+                Section("Appearance") {
+                    Picker("Theme", selection: $appearanceRaw) {
+                        ForEach(HAAppearance.allCases) { mode in
+                            Text(mode.title).tag(mode.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
                 Section("Access") {
                     LabeledContent("Bundle ID", value: Bundle.main.bundleIdentifier ?? "—")
                     Text("Container access uses the MobileHouseArrest identity plus MCM / bad_query.")
@@ -19,14 +28,18 @@ struct SettingsView: View {
                     NavigationLink {
                         LogsView()
                     } label: {
-                        Label("Logs", systemImage: "terminal.fill")
+                        accentLabel("Logs", "terminal.fill")
                     }
                     Button {
                         appModel.copyLogs()
                         copied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            copied = false
+                        }
                     } label: {
-                        Label(copied ? "Copied" : "Copy logs", systemImage: "doc.on.doc")
+                        accentLabel(copied ? "Copied" : "Copy logs", "doc.on.doc")
                     }
+                    .buttonStyle(.plain)
                     .disabled(appModel.logLines.isEmpty)
                 }
 
@@ -35,12 +48,20 @@ struct SettingsView: View {
                     LabeledContent("Focus", value: "Patch tool (app + App Group)")
                 }
             }
+            .tint(HATheme.accent)
+            .listItemTint(HATheme.accent)
             .navigationTitle("Settings")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                }
-            }
+        }
+        .tint(HATheme.accent)
+    }
+
+    private func accentLabel(_ title: String, _ icon: String) -> some View {
+        Label {
+            Text(title).foregroundStyle(HATheme.accent)
+        } icon: {
+            Image(systemName: icon)
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(HATheme.accent)
         }
     }
 }
