@@ -31,11 +31,10 @@ enum AppDiscoveryService {
         thirdPartyOnly: Bool = true,
         progress: ((String, Int, Int) -> Void)? = nil
     ) -> [InstalledApp] {
-        if didFullScan {
-            HALog.write("refresh start cached=\(cachedApps.count)")
-            return refresh(thirdPartyOnly: thirdPartyOnly, progress: progress)
-        }
-        return fullScan(thirdPartyOnly: thirdPartyOnly, progress: progress)
+        let all = didFullScan
+            ? refresh(progress: progress)
+            : fullScan(progress: progress)
+        return all.filter { thirdPartyOnly ? !$0.isSystem : $0.isSystem }
     }
 
     static func usage(for path: String) -> ContainerUsage {
@@ -55,7 +54,6 @@ enum AppDiscoveryService {
     }
 
     private static func fullScan(
-        thirdPartyOnly: Bool,
         progress: ((String, Int, Int) -> Void)?
     ) -> [InstalledApp] {
         HALog.write("scan start")
@@ -64,10 +62,10 @@ enum AppDiscoveryService {
         progress?("Finding apps", 0, 0)
 
         let catalog = HAInstalledAppCatalog()
-        merge(catalog, into: &byID, thirdPartyOnly: thirdPartyOnly)
+        merge(catalog, into: &byID)
         if byID.isEmpty {
             for bundleID in LaunchServicesStore.identifiers() {
-                addIfNeeded(bundleID, into: &byID, thirdPartyOnly: thirdPartyOnly)
+                addIfNeeded(bundleID, into: &byID)
             }
         }
 
@@ -84,7 +82,6 @@ enum AppDiscoveryService {
     }
 
     private static func refresh(
-        thirdPartyOnly: Bool,
         progress: ((String, Int, Int) -> Void)?
     ) -> [InstalledApp] {
         progress?("Updating apps", 0, 0)
@@ -112,7 +109,6 @@ enum AppDiscoveryService {
             let handle = bad_query(&pathC, true, nil, false)
             defer { if handle >= 0 { bad_query_release(handle) } }
             guard let bundleID = bundleID(fromContainer: folder) else { continue }
-            if thirdPartyOnly && isSystemBundle(bundleID) { continue }
             if byID[bundleID] != nil { continue }
             byID[bundleID] = InstalledApp(
                 bundleID: bundleID,
@@ -124,7 +120,7 @@ enum AppDiscoveryService {
         }
 
         for bundleID in droppedIDs {
-            guard addIfNeeded(bundleID, into: &byID, thirdPartyOnly: thirdPartyOnly) else { continue }
+            guard addIfNeeded(bundleID, into: &byID) else { continue }
             added[bundleID] = byID[bundleID]
             HALog.write("refresh retry \(bundleID)")
         }
@@ -146,10 +142,8 @@ enum AppDiscoveryService {
     @discardableResult
     private static func addIfNeeded(
         _ bundleID: String,
-        into byID: inout [String: InstalledApp],
-        thirdPartyOnly: Bool
+        into byID: inout [String: InstalledApp]
     ) -> Bool {
-        if thirdPartyOnly && isSystemBundle(bundleID) { return false }
         if byID[bundleID] != nil { return false }
         var err: NSString?
         guard let path = MCMActivateContainerPath(2, bundleID, false, &err),
@@ -166,12 +160,10 @@ enum AppDiscoveryService {
 
     private static func merge(
         _ catalog: [AnyHashable: Any],
-        into byID: inout [String: InstalledApp],
-        thirdPartyOnly: Bool
+        into byID: inout [String: InstalledApp]
     ) {
         for (rawID, rawInfo) in catalog {
             guard let bundleID = rawID as? String else { continue }
-            if thirdPartyOnly && isSystemBundle(bundleID) { continue }
             let info = rawInfo as? [String: Any] ?? [:]
             var path = info["container"] as? String
             if path == nil || path?.isEmpty == true {
@@ -268,9 +260,18 @@ enum AppDiscoveryService {
         var itunesHit = 0
         var itunesMiss = 0
         var result: [String: InstalledApp] = [:]
-        let total = apps.count
+        let lookup = apps.filter { !isSystemBundle($0.key) }
+        let total = max(lookup.count, 1)
         var index = 0
         for (id, app) in apps {
+            if isSystemBundle(id) {
+                result[id] = InstalledApp(
+                    bundleID: id,
+                    displayName: lastComponent(id),
+                    dataContainerPath: app.dataContainerPath
+                )
+                continue
+            }
             index += 1
             progress?("Fetching App Store info", index, total)
             var name = lastComponent(id)
