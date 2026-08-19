@@ -142,7 +142,7 @@ struct CleanerView: View {
     }
 
     private var storageSection: some View {
-        Section("iPhone") {
+        Section {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Text("Storage")
@@ -169,13 +169,33 @@ struct CleanerView: View {
 
     private var optionsSection: some View {
         Section {
-            Toggle("Caches", isOn: $cleanCaches)
-            Toggle("tmp", isOn: $cleanTmp)
-        } header: {
-            Text("Include")
-        } footer: {
-            Text("Turn off an option to skip it when cleaning.")
+            HStack {
+                Text("Clean")
+                    .foregroundStyle(HATheme.secondaryText)
+                Spacer()
+                chip("Caches", isOn: $cleanCaches)
+                chip("tmp", isOn: $cleanTmp)
+            }
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            .listRowBackground(Color.clear)
         }
+    }
+
+    private func chip(_ title: String, isOn: Binding<Bool>) -> some View {
+        Button {
+            isOn.wrappedValue.toggle()
+        } label: {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    isOn.wrappedValue ? HATheme.accent.opacity(0.22) : Color.secondary.opacity(0.16),
+                    in: Capsule()
+                )
+                .foregroundStyle(isOn.wrappedValue ? HATheme.accent : HATheme.secondaryText)
+        }
+        .buttonStyle(.plain)
     }
 
     private var appsSection: some View {
