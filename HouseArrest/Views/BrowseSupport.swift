@@ -79,20 +79,58 @@ enum AppGroupLookup {
         return nil
     }
 
+    static func belongs(_ groupID: String, to bundleID: String) -> Bool {
+        let group = groupID.lowercased()
+        let bundle = bundleID.lowercased()
+        if group.contains(bundle) { return true }
+        let skip: Set<String> = ["com", "net", "org", "app", "ios", "group"]
+        let tokens = bundle.split(separator: ".").map(String.init).filter { $0.count >= 4 && !skip.contains($0) }
+        return tokens.contains { group.contains($0) }
+    }
+
     static func remember(_ groupID: String, for bundleID: String) {
-        var list = remembered(for: bundleID)
+        var list = rawList(for: bundleID)
         if !list.contains(groupID) {
             list.insert(groupID, at: 0)
             UserDefaults.standard.set(list, forKey: key(bundleID))
         }
+        var explicit = explicitList(for: bundleID)
+        if !explicit.contains(groupID) {
+            explicit.insert(groupID, at: 0)
+            UserDefaults.standard.set(explicit, forKey: explicitKey(bundleID))
+        }
+    }
+
+    static func forget(_ groupID: String, for bundleID: String) {
+        UserDefaults.standard.set(rawList(for: bundleID).filter { $0 != groupID }, forKey: key(bundleID))
+        UserDefaults.standard.set(explicitList(for: bundleID).filter { $0 != groupID }, forKey: explicitKey(bundleID))
     }
 
     static func remembered(for bundleID: String) -> [String] {
+        let explicit = explicitList(for: bundleID)
+        let filtered = rawList(for: bundleID).filter { groupID in
+            explicit.contains(groupID) || belongs(groupID, to: bundleID)
+        }
+        if filtered != rawList(for: bundleID) {
+            UserDefaults.standard.set(filtered, forKey: key(bundleID))
+        }
+        return filtered
+    }
+
+    private static func rawList(for bundleID: String) -> [String] {
         UserDefaults.standard.stringArray(forKey: key(bundleID)) ?? []
+    }
+
+    private static func explicitList(for bundleID: String) -> [String] {
+        UserDefaults.standard.stringArray(forKey: explicitKey(bundleID)) ?? []
     }
 
     private static func key(_ bundleID: String) -> String {
         "ha.groups.\(bundleID)"
+    }
+
+    private static func explicitKey(_ bundleID: String) -> String {
+        "ha.groups.explicit.\(bundleID)"
     }
 }
 
