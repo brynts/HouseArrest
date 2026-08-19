@@ -72,6 +72,7 @@ struct AppsView: View {
             .navigationDestination(for: String.self) { bundleID in
                 if let app = apps.first(where: { $0.bundleID == bundleID }) {
                     AppDetailView(app: app)
+                        .id(app.bundleID)
                 } else {
                     ContentUnavailableView("App not found", systemImage: "app")
                 }
@@ -288,10 +289,12 @@ struct AppDetailView: View {
         .onAppear(perform: loadUsage)
         .fullScreenCover(isPresented: $showBrowse) {
             ContainerBrowserView(app: app)
+                .id(app.bundleID)
                 .environmentObject(appModel)
         }
         .fullScreenCover(isPresented: $showCreate) {
             CreatePatchView(app: app)
+                .id(app.bundleID)
                 .environmentObject(appModel)
         }
         .alert("Apps", isPresented: Binding(
