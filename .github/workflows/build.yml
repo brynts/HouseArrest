@@ -21,17 +21,6 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
-      - name: Decode AppIcon
-        run: |
-          python3 - <<'PY'
-          import base64
-          from pathlib import Path
-          folder = Path("HouseArrest/Assets.xcassets/AppIcon.appiconset")
-          raw = (folder / "AppIcon.png.b64").read_text().strip()
-          (folder / "AppIcon.png").write_bytes(base64.b64decode(raw))
-          print("wrote", folder / "AppIcon.png")
-          PY
-
       - name: Recolor AppIcon to mint
         run: |
           python3 - <<'PY'
@@ -52,11 +41,14 @@ jobs:
               return c
 
           def read_chunks(data):
-              assert data[:8] == b"\x89PNG\r\n\x1a\n"
+              if data[:8] != b"\x89PNG\r\n\x1a\n":
+                  raise ValueError("not a PNG")
               pos = 8
               chunks = []
-              while pos < len(data):
+              while pos + 8 <= len(data):
                   length = struct.unpack(">I", data[pos:pos + 4])[0]
+                  if pos + 12 + length > len(data):
+                      raise ValueError("truncated PNG chunk")
                   ctype = data[pos + 4:pos + 8]
                   cdata = data[pos + 8:pos + 8 + length]
                   chunks.append((ctype, cdata))
@@ -64,6 +56,20 @@ jobs:
                   if ctype == b"IEND":
                       break
               return chunks
+
+          def png_idat(data):
+              return b"".join(payload for tag, payload in read_chunks(data) if tag == b"IDAT")
+
+          def is_valid_png(data):
+              try:
+                  zlib.decompress(png_idat(data))
+                  return True
+              except Exception:
+                  return False
+
+          data = path.read_bytes() if path.exists() else b""
+          if not is_valid_png(data):
+              raise SystemExit(f"AppIcon.png missing or invalid: {path} ({len(data)} bytes)")
 
           def unfilter(raw, width, height, bpp):
               stride = width * bpp
@@ -117,13 +123,12 @@ jobs:
                   + chunk(b"IEND", b"")
               )
 
-          data = path.read_bytes()
           chunks = read_chunks(data)
           ihdr = next(payload for tag, payload in chunks if tag == b"IHDR")
           width, height, bit, color_type, *_ = struct.unpack(">IIBBBBB", ihdr)
           if bit != 8 or color_type != 2:
               raise SystemExit(f"unsupported PNG {width}x{height} bit={bit} type={color_type}")
-          raw = zlib.decompress(b"".join(payload for tag, payload in chunks if tag == b"IDAT"))
+          raw = zlib.decompress(png_idat(data))
           pixels = unfilter(raw, width, height, 3)
           src_house = bytes((232, 168, 74))
           src_lock = bytes((184, 122, 40))
