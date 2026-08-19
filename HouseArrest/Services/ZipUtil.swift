@@ -18,14 +18,19 @@ enum ZipUtil {
             var isDir: ObjCBool = false
             guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir) else { continue }
             if isDir.boolValue {
-                let files = try walk(path)
-                for file in files {
+                for file in try walk(path) {
                     let rel = relative(from: (path as NSString).deletingLastPathComponent, to: file)
                     offset += try writeFile(file, name: rel, handle: handle, password: pwd, centrals: &centrals, offset: offset)
                 }
             } else {
-                let name = URL(fileURLWithPath: path).lastPathComponent
-                offset += try writeFile(path, name: name, handle: handle, password: pwd, centrals: &centrals, offset: offset)
+                offset += try writeFile(
+                    path,
+                    name: URL(fileURLWithPath: path).lastPathComponent,
+                    handle: handle,
+                    password: pwd,
+                    centrals: &centrals,
+                    offset: offset
+                )
             }
         }
 
@@ -62,7 +67,8 @@ enum ZipUtil {
             let nameEnd = nameStart + nameLen
             guard nameEnd + extraLen <= data.count else { throw PatchError.invalidPackage }
             let name = String(data: data[nameStart..<nameEnd], encoding: .utf8) ?? "file"
-            var payloadStart = nameEnd + extraLen
+            let payloadStart = nameEnd + extraLen
+            guard payloadStart + compSize <= data.count else { throw PatchError.invalidPackage }
             var payload = Data(data[payloadStart..<(payloadStart + compSize)])
             if flags & 1 != 0 {
                 guard let pwd else { throw PatchError.invalidPackage }
@@ -100,7 +106,7 @@ enum ZipUtil {
         offset: UInt32
     ) throws -> UInt32 {
         let raw = try Data(contentsOf: URL(fileURLWithPath: path))
-        let crc = crc32(raw)
+        let crc = crc32Value(raw)
         var payload = raw
         var flags: UInt16 = 0
         if let password {
@@ -164,33 +170,38 @@ enum ZipUtil {
         return URL(fileURLWithPath: path).lastPathComponent
     }
 
-    private static func crc32(_ data: Data) -> UInt32 {
-        data.withUnsafeBytes { raw in
-            UInt32(zlib.crc32(0, raw.bindMemory(to: UInt8.self).baseAddress, UInt32(data.count)))
+    private static func crc32Value(_ data: Data) -> UInt32 {
+        data.withUnsafeBytes { raw -> UInt32 in
+            let ptr = raw.bindMemory(to: UInt8.self).baseAddress
+            return UInt32(crc32(0, ptr, uInt(data.count)))
         }
     }
 
-    private static func inflate(_ data: Data) throws -> Data {
+    private static func inflate(_ source: Data) throws -> Data {
+        var payload = source
         var stream = z_stream()
-        var status = inflateInit2_(&stream, -MAX_WBITS, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size))
-        guard status == Z_OK else { throw PatchError.invalidPackage }
-        defer { inflateEnd(&stream) }
-        var output = Data()
-        var input = data
-        try input.withUnsafeMutableBytes { inBuf in
-            stream.next_in = inBuf.bindMemory(to: Bytef.self).baseAddress
-            stream.avail_in = uInt(input.count)
-            var buffer = [UInt8](repeating: 0, count: 64 * 1024)
-            repeat {
-                try buffer.withUnsafeMutableBytes { outBuf in
-                    stream.next_out = outBuf.bindMemory(to: Bytef.self).baseAddress
-                    stream.avail_out = uInt(outBuf.count)
-                    status = zlib.inflate(&stream, Z_NO_FLUSH)
-                }
-                let have = 64 * 1024 - Int(stream.avail_out)
-                if have > 0 { output.append(contentsOf: buffer.prefix(have)) }
-            } while status == Z_OK
+        let initStatus = payload.withUnsafeMutableBytes { buf -> Int32 in
+            stream.next_in = buf.bindMemory(to: Bytef.self).baseAddress
+            stream.avail_in = uInt(payload.count)
+            return inflateInit2_(&stream, -MAX_WBITS, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size))
         }
+        guard initStatus == Z_OK else { throw PatchError.invalidPackage }
+        defer { inflateEnd(&stream) }
+
+        var output = Data()
+        var buffer = [UInt8](repeating: 0, count: 65_536)
+        var status: Int32
+        repeat {
+            status = buffer.withUnsafeMutableBytes { outBuf in
+                stream.next_out = outBuf.bindMemory(to: Bytef.self).baseAddress
+                stream.avail_out = uInt(buffer.count)
+                return inflate(&stream, Z_NO_FLUSH)
+            }
+            let have = buffer.count - Int(stream.avail_out)
+            if have > 0 {
+                output.append(contentsOf: buffer.prefix(have))
+            }
+        } while status == Z_OK
         guard status == Z_STREAM_END else { throw PatchError.invalidPackage }
         return output
     }
@@ -231,7 +242,7 @@ private enum ZipCrypto {
     static func decrypt(_ data: Data, password: String) throws -> Data {
         guard data.count >= 12 else { throw PatchError.invalidPackage }
         var keys = Keys(password: password)
-        var rest = Data(data)
+        var rest = Array(data)
         for i in 0..<12 { rest[i] = keys.decode(rest[i]) }
         return Data(rest.dropFirst(12).map { keys.decode($0) })
     }
@@ -268,8 +279,11 @@ private enum ZipCrypto {
             return UInt8(((temp &* (temp ^ 1)) >> 8) & 0xff)
         }
 
-        func crc(_ crc: UInt32, _ c: UInt8) -> UInt32 {
-            UInt32(zlib.crc32(uLong(crc), [c], 1))
+        func crc(_ value: UInt32, _ c: UInt8) -> UInt32 {
+            var byte = c
+            return withUnsafePointer(to: &byte) { ptr in
+                UInt32(crc32(uLong(value), ptr, 1))
+            }
         }
     }
 }
