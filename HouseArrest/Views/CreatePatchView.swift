@@ -318,7 +318,11 @@ struct CreatePatchFolderView: View {
 
     private func load() {
         do {
-            settleGrant(path: currentPath, groupID: nil)
+            let groupID = targetID.hasPrefix("group.") ? targetID : nil
+            settleGrant(path: rootPath, groupID: groupID)
+            if currentPath != rootPath {
+                settleGrant(path: currentPath, groupID: groupID)
+            }
             items = try ContainerLister.list(path: currentPath, rootPath: rootPath)
                 .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         } catch {
