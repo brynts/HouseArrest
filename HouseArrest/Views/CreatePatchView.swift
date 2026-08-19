@@ -160,12 +160,7 @@ struct CreatePatchView: View {
         let dataPath = app.dataContainerPath
         HAWork.queue.async {
             if let dataPath { settleGrant(path: dataPath, groupID: nil) }
-            var found: [(String, String)] = []
-            for groupID in AppGroupLookup.remembered(for: bundleID) {
-                if let path = AppGroupLookup.resolve(groupID) {
-                    found.append((groupID, path))
-                }
-            }
+            let found = AppGroupLookup.discover(for: bundleID)
             DispatchQueue.main.async {
                 groups = found
                 loading = false
@@ -323,7 +318,7 @@ struct CreatePatchFolderView: View {
 
     private func load() {
         do {
-            settleGrant(path: currentPath, groupID: targetID.hasPrefix("group.") ? targetID : nil)
+            settleGrant(path: currentPath, groupID: nil)
             items = try ContainerLister.list(path: currentPath, rootPath: rootPath)
                 .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         } catch {
