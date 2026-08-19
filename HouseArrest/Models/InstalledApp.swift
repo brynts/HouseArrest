@@ -22,4 +22,5 @@ struct InstalledApp: Identifiable, Hashable {
     var dataContainerPath: String?
 
     var icon: UIImage? { AppIconStore.icon(for: bundleID) }
+    var isSystem: Bool { AppDiscoveryService.isSystemBundle(bundleID) }
 }
