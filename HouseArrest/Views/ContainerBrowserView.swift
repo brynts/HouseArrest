@@ -42,15 +42,6 @@ struct ContainerBrowserView: View {
                                 Label(name, systemImage: "folder.fill")
                             }
                         }
-                        NavigationLink(value: BrowseNav.folder(
-                            title: app.bundleID,
-                            path: dataPath,
-                            targetID: app.bundleID,
-                            rootPath: dataPath,
-                            isGroup: false
-                        )) {
-                            Label("All files", systemImage: "internaldrive")
-                        }
                     }
                 } else {
                     Section("App data") {
@@ -78,9 +69,11 @@ struct ContainerBrowserView: View {
             }
             .navigationTitle("Browse")
             .navigationBarTitleDisplayMode(.inline)
+            .tint(HATheme.accent)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Close") { dismiss() }
+                    Button("Close", action: { dismiss() })
+                        .foregroundStyle(HATheme.accent)
                 }
             }
             .navigationDestination(for: BrowseNav.self) { route in
@@ -117,6 +110,7 @@ struct ContainerBrowserView: View {
             }
             .onAppear(perform: loadRoots)
         }
+        .tint(HATheme.accent)
     }
 
     private func loadRoots() {
@@ -176,8 +170,16 @@ struct FolderBrowserView: View {
 
     @State private var items: [BrowseItem] = []
     @State private var loading = true
+    @State private var selecting = false
+    @State private var selected = Set<String>()
     @State private var shareURL: URL?
     @State private var message: String?
+    @State private var deleteItems: [BrowseItem] = []
+    @State private var askZip = false
+    @State private var zipName = "archive.zip"
+    @State private var zipPassword = ""
+    @State private var unzipItem: BrowseItem?
+    @State private var unzipPassword = ""
 
     var body: some View {
         Group {
@@ -187,37 +189,20 @@ struct FolderBrowserView: View {
                 ContentUnavailableView("Empty", systemImage: "folder")
             } else {
                 List(items) { item in
-                    if item.isDirectory {
-                        NavigationLink(value: BrowseNav.folder(
-                            title: item.name,
-                            path: item.path,
-                            targetID: targetID,
-                            rootPath: rootPath,
-                            isGroup: isGroup
-                        )) {
-                            row(item)
+                    rowContent(item)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) { deleteItems = [item] } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
                         }
-                    } else {
-                        NavigationLink(value: BrowseNav.preview(
-                            name: item.name,
-                            path: item.path,
-                            groupID: isGroup ? targetID : nil
-                        )) {
-                            row(item)
-                        }
-                    }
+                        .contextMenu { itemMenu(item) }
                 }
             }
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(action: load) {
-                    Image(systemName: "arrow.clockwise").foregroundStyle(HATheme.accent)
-                }
-            }
-        }
+        .tint(HATheme.accent)
+        .toolbar { toolbar }
         .onAppear(perform: load)
         .sheet(isPresented: Binding(
             get: { shareURL != nil },
@@ -232,6 +217,135 @@ struct FolderBrowserView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(message ?? "")
+        }
+        .alert("Zip", isPresented: $askZip) {
+            TextField("Name", text: $zipName)
+            SecureField("Password (optional)", text: $zipPassword)
+            Button("Create") { zipSelected() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Leave password empty for a normal zip.")
+        }
+        .alert("Unzip", isPresented: Binding(
+            get: { unzipItem != nil },
+            set: { if !$0 { unzipItem = nil } }
+        )) {
+            SecureField("Password (optional)", text: $unzipPassword)
+            Button("Extract") { unzipCurrent() }
+            Button("Cancel", role: .cancel) { unzipItem = nil }
+        }
+        .confirmationDialog(
+            "Delete \(deleteItems.count) item(s)?",
+            isPresented: Binding(
+                get: { !deleteItems.isEmpty },
+                set: { if !$0 { deleteItems = [] } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) { deleteSelected(deleteItems) }
+            Button("Cancel", role: .cancel) { deleteItems = [] }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            if selecting {
+                Button("Done") {
+                    selecting = false
+                    selected.removeAll()
+                }
+                .foregroundStyle(HATheme.accent)
+            } else {
+                Menu {
+                    Button { selecting = true } label: {
+                        Label("Select", systemImage: "checkmark.circle")
+                    }
+                    if BrowseClipboard.hasItems {
+                        Button { paste() } label: {
+                            Label("Paste", systemImage: "doc.on.clipboard")
+                        }
+                    }
+                    Button(action: load) {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundStyle(HATheme.accent)
+                }
+            }
+        }
+        if selecting {
+            ToolbarItemGroup(placement: .bottomBar) {
+                Button { copySelected(move: false) } label: { Label("Copy", systemImage: "doc.on.doc") }
+                    .disabled(selected.isEmpty)
+                Button { copySelected(move: true) } label: { Label("Move", systemImage: "arrow.right.doc.on.clipboard") }
+                    .disabled(selected.isEmpty)
+                Button {
+                    zipName = "archive.zip"
+                    zipPassword = ""
+                    askZip = true
+                } label: { Label("Zip", systemImage: "archivebox") }
+                    .disabled(selected.isEmpty)
+                Button(role: .destructive) {
+                    deleteItems = items.filter { selected.contains($0.path) }
+                } label: { Label("Delete", systemImage: "trash") }
+                    .disabled(selected.isEmpty)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func rowContent(_ item: BrowseItem) -> some View {
+        if selecting {
+            Button {
+                if selected.contains(item.path) { selected.remove(item.path) }
+                else { selected.insert(item.path) }
+            } label: {
+                HStack {
+                    Image(systemName: selected.contains(item.path) ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(HATheme.accent)
+                    row(item)
+                }
+            }
+            .foregroundStyle(.primary)
+        } else if item.isDirectory {
+            NavigationLink(value: BrowseNav.folder(
+                title: item.name,
+                path: item.path,
+                targetID: targetID,
+                rootPath: rootPath,
+                isGroup: isGroup
+            )) { row(item) }
+        } else {
+            NavigationLink(value: BrowseNav.preview(
+                name: item.name,
+                path: item.path,
+                groupID: isGroup ? targetID : nil
+            )) { row(item) }
+        }
+    }
+
+    @ViewBuilder
+    private func itemMenu(_ item: BrowseItem) -> some View {
+        Button { BrowseClipboard.copy([item], move: false); message = "Copied" } label: {
+            Label("Copy", systemImage: "doc.on.doc")
+        }
+        Button { BrowseClipboard.copy([item], move: true); message = "Ready to move" } label: {
+            Label("Move", systemImage: "arrow.right.doc.on.clipboard")
+        }
+        Button {
+            UIPasteboard.general.string = item.path
+            message = "Path copied"
+        } label: { Label("Copy path", systemImage: "link") }
+        if ZipUtil.isZip(item.name) {
+            Button { unzipItem = item; unzipPassword = "" } label: {
+                Label("Unzip", systemImage: "archivebox")
+            }
+        }
+        Button { share(item) } label: { Label("Share", systemImage: "square.and.arrow.up") }
+        Button(role: .destructive) { deleteItems = [item] } label: {
+            Label("Delete", systemImage: "trash")
         }
     }
 
@@ -248,19 +362,10 @@ struct FolderBrowserView: View {
                 }
             }
         }
-        .contextMenu {
-            Button {
-                UIPasteboard.general.string = item.path
-                message = "Path copied"
-            } label: {
-                Label("Copy path", systemImage: "doc.on.doc")
-            }
-            if !item.isDirectory {
-                Button { share(item) } label: {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                }
-            }
-        }
+    }
+
+    private func selectedItems() -> [BrowseItem] {
+        items.filter { selected.contains($0.path) }
     }
 
     private func load() {
@@ -280,12 +385,91 @@ struct FolderBrowserView: View {
         }
     }
 
+    private func copySelected(move: Bool) {
+        BrowseClipboard.copy(selectedItems(), move: move)
+        message = move ? "Ready to move" : "Copied \(selected.count) item(s)"
+        selecting = false
+        selected.removeAll()
+    }
+
     private func share(_ item: BrowseItem) {
         HAWork.queue.async {
             settleGrant(path: rootPath, groupID: isGroup ? targetID : nil)
             do {
                 let url = try ContainerLister.exportCopy(path: item.path)
                 DispatchQueue.main.async { shareURL = url }
+            } catch {
+                DispatchQueue.main.async { message = error.localizedDescription }
+            }
+        }
+    }
+
+    private func deleteSelected(_ list: [BrowseItem]) {
+        HAWork.queue.async {
+            do {
+                try FileOps.delete(list.map(\.path), rootPath: rootPath)
+                DispatchQueue.main.async {
+                    selected.removeAll()
+                    deleteItems = []
+                    load()
+                }
+            } catch {
+                DispatchQueue.main.async { message = error.localizedDescription }
+            }
+        }
+    }
+
+    private func paste() {
+        HAWork.queue.async {
+            do {
+                try FileOps.paste(into: currentPath, rootPath: rootPath)
+                DispatchQueue.main.async { load(); message = "Pasted" }
+            } catch {
+                DispatchQueue.main.async { message = error.localizedDescription }
+            }
+        }
+    }
+
+    private func zipSelected() {
+        let list = selectedItems()
+        var name = zipName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.isEmpty { name = "archive.zip" }
+        if !name.lowercased().hasSuffix(".zip") { name += ".zip" }
+        let password = zipPassword
+        HAWork.queue.async {
+            do {
+                settleGrant(path: rootPath, groupID: isGroup ? targetID : nil)
+                let dest = try FileOps.uniquePath(in: currentPath, name: name, rootPath: rootPath)
+                try ZipUtil.zip(paths: list.map(\.path), to: dest, password: password)
+                DispatchQueue.main.async {
+                    selecting = false
+                    selected.removeAll()
+                    zipPassword = ""
+                    load()
+                    message = "Created \(URL(fileURLWithPath: dest).lastPathComponent)"
+                }
+            } catch {
+                DispatchQueue.main.async { message = error.localizedDescription }
+            }
+        }
+    }
+
+    private func unzipCurrent() {
+        guard let item = unzipItem else { return }
+        let password = unzipPassword
+        unzipItem = nil
+        HAWork.queue.async {
+            do {
+                settleGrant(path: rootPath, groupID: isGroup ? targetID : nil)
+                let folderName = URL(fileURLWithPath: item.path).deletingPathExtension().lastPathComponent
+                let dest = try FileOps.uniquePath(in: currentPath, name: folderName, rootPath: rootPath)
+                try FileManager.default.createDirectory(atPath: dest, withIntermediateDirectories: true)
+                try ZipUtil.unzip(file: item.path, to: dest, password: password)
+                DispatchQueue.main.async {
+                    unzipPassword = ""
+                    load()
+                    message = "Extracted"
+                }
             } catch {
                 DispatchQueue.main.async { message = error.localizedDescription }
             }
@@ -311,6 +495,7 @@ struct FilePreviewView: View {
         .background(Color(.systemBackground))
         .navigationTitle(name)
         .navigationBarTitleDisplayMode(.inline)
+        .tint(HATheme.accent)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -321,6 +506,7 @@ struct FilePreviewView: View {
                     }
                 } label: {
                     Image(systemName: "square.and.arrow.up")
+                        .foregroundStyle(HATheme.accent)
                 }
             }
         }
@@ -344,6 +530,7 @@ struct FilePreviewView: View {
         case "plist": return "list.bullet.rectangle"
         case "json": return "curlybraces"
         case "txt", "log", "strings": return "doc.plaintext"
+        case "zip": return "archivebox"
         default: return "doc"
         }
     }
@@ -361,6 +548,63 @@ struct FilePreviewView: View {
             return data.count > 200_000 ? text + "\n\u{2026}" : text
         }
         return "Binary (\(data.count) bytes)"
+    }
+}
+
+enum BrowseClipboard {
+    static var items: [BrowseItem] = []
+    static var move = false
+    static var hasItems: Bool { !items.isEmpty }
+    static func copy(_ list: [BrowseItem], move: Bool) {
+        items = list
+        self.move = move
+    }
+}
+
+enum FileOps {
+    static func delete(_ paths: [String], rootPath: String) throws {
+        for path in paths {
+            try within(rootPath, path)
+            try FileManager.default.removeItem(atPath: path)
+        }
+    }
+
+    static func paste(into folder: String, rootPath: String) throws {
+        try within(rootPath, folder)
+        for item in BrowseClipboard.items {
+            let dest = uniqueURL(in: folder, name: item.name)
+            if BrowseClipboard.move {
+                try FileManager.default.moveItem(at: URL(fileURLWithPath: item.path), to: dest)
+            } else {
+                try FileManager.default.copyItem(at: URL(fileURLWithPath: item.path), to: dest)
+            }
+        }
+        if BrowseClipboard.move { BrowseClipboard.items = [] }
+    }
+
+    static func uniquePath(in folder: String, name: String, rootPath: String) throws -> String {
+        try within(rootPath, folder)
+        return uniqueURL(in: folder, name: name).path
+    }
+
+    private static func uniqueURL(in folder: String, name: String) -> URL {
+        var dest = URL(fileURLWithPath: folder).appendingPathComponent(name)
+        var i = 2
+        while FileManager.default.fileExists(atPath: dest.path) {
+            let base = (name as NSString).deletingPathExtension
+            let ext = (name as NSString).pathExtension
+            dest = URL(fileURLWithPath: folder).appendingPathComponent(
+                ext.isEmpty ? "\(base) \(i)" : "\(base) \(i).\(ext)"
+            )
+            i += 1
+        }
+        return dest
+    }
+
+    private static func within(_ root: String, _ path: String) throws {
+        let r = URL(fileURLWithPath: root).standardizedFileURL.path
+        let p = URL(fileURLWithPath: path).standardizedFileURL.path
+        guard p == r || p.hasPrefix(r + "/") else { throw PatchError.unsafePath }
     }
 }
 
