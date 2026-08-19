@@ -9,6 +9,13 @@ struct PatchPick: Hashable {
     var name: String
 }
 
+private struct CreateFolder: Hashable {
+    var title: String
+    var path: String
+    var targetID: String
+    var rootPath: String
+}
+
 struct CreatePatchView: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
@@ -33,22 +40,24 @@ struct CreatePatchView: View {
                 if let dataPath = app.dataContainerPath {
                     Section("App data") {
                         ForEach(["Documents", "Library", "tmp", "StoreKit"], id: \.self) { name in
-                            folderRow(
+                            rootRow(
                                 title: name,
                                 path: (dataPath as NSString).appendingPathComponent(name),
                                 targetID: app.bundleID,
-                                rootPath: dataPath
+                                rootPath: dataPath,
+                                symbol: "folder.fill"
                             )
                         }
                     }
                 }
                 Section("App Groups") {
                     ForEach(groups, id: \.id) { group in
-                        folderRow(
+                        rootRow(
                             title: group.id,
                             path: group.path,
                             targetID: group.id,
-                            rootPath: group.path
+                            rootPath: group.path,
+                            symbol: "person.2.fill"
                         )
                     }
                     Button("Open group ID…") { askGroup = true }
@@ -57,6 +66,15 @@ struct CreatePatchView: View {
             .navigationTitle("Create patch")
             .navigationBarTitleDisplayMode(.inline)
             .tint(HATheme.accent)
+            .navigationDestination(for: CreateFolder.self) { folder in
+                CreatePatchFolderView(
+                    title: folder.title,
+                    targetID: folder.targetID,
+                    rootPath: folder.rootPath,
+                    currentPath: folder.path,
+                    selected: $selected
+                )
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Close") { dismiss() }
@@ -102,19 +120,17 @@ struct CreatePatchView: View {
             } message: {
                 Text(errorText ?? "")
             }
-            .sheet(isPresented: Binding(
-                get: { shareURL != nil },
-                set: { if !$0 { shareURL = nil } }
-            )) {
-                if let shareURL {
-                    ShareSheet(items: [shareURL])
-                }
+            .sheet(item: Binding(
+                get: { shareURL.map { ShareItem(url: $0) } },
+                set: { shareURL = $0?.url }
+            )) { item in
+                ShareSheet(items: [item.url])
             }
         }
         .tint(HATheme.accent)
     }
 
-    private func folderRow(title: String, path: String, targetID: String, rootPath: String) -> some View {
+    private func rootRow(title: String, path: String, targetID: String, rootPath: String, symbol: String) -> some View {
         let pick = PatchPick(targetID: targetID, rootPath: rootPath, path: path, isDirectory: true, name: title)
         return HStack {
             Button {
@@ -124,22 +140,13 @@ struct CreatePatchView: View {
                     .foregroundStyle(HATheme.accent)
             }
             .buttonStyle(.plain)
-            NavigationLink(value: pick) {
+            NavigationLink(value: CreateFolder(title: title, path: path, targetID: targetID, rootPath: rootPath)) {
                 HStack {
-                    Image(systemName: title.hasPrefix("group.") ? "person.2.fill" : "folder.fill")
+                    Image(systemName: symbol)
                         .foregroundStyle(HATheme.accent)
                     Text(title)
                 }
             }
-        }
-        .navigationDestination(for: PatchPick.self) { item in
-            CreatePatchFolderView(
-                title: item.name,
-                targetID: item.targetID,
-                rootPath: item.rootPath,
-                currentPath: item.path,
-                selected: $selected
-            )
         }
     }
 
@@ -163,7 +170,7 @@ struct CreatePatchView: View {
             DispatchQueue.main.async {
                 groups = found
                 loading = false
-                patchName = app.displayName
+                if patchName.isEmpty { patchName = app.displayName }
             }
         }
     }
@@ -247,48 +254,11 @@ struct CreatePatchFolderView: View {
     var body: some View {
         List {
             ForEach(items) { item in
-                let pick = PatchPick(
-                    targetID: targetID,
-                    rootPath: rootPath,
-                    path: item.path,
-                    isDirectory: item.isDirectory,
-                    name: item.name
-                )
-                HStack(spacing: 10) {
-                    Button {
-                        if selected.contains(pick) { selected.remove(pick) } else { selected.insert(pick) }
-                    } label: {
-                        Image(systemName: selected.contains(pick) ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(HATheme.accent)
-                    }
-                    .buttonStyle(.plain)
-                    if item.isDirectory {
-                        NavigationLink(value: pick) {
-                            HStack {
-                                Image(systemName: "folder.fill")
-                                    .foregroundStyle(HATheme.accent)
-                                Text(item.name)
-                            }
-                        }
-                    } else {
-                        Image(systemName: "doc")
-                            .foregroundStyle(HATheme.accent)
-                        Text(item.name)
-                    }
-                }
+                folderRow(item)
             }
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: PatchPick.self) { item in
-            CreatePatchFolderView(
-                title: item.name,
-                targetID: item.targetID,
-                rootPath: item.rootPath,
-                currentPath: item.path,
-                selected: $selected
-            )
-        }
         .onAppear(perform: load)
         .alert("Create patch", isPresented: Binding(
             get: { errorText != nil },
@@ -297,6 +267,47 @@ struct CreatePatchFolderView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorText ?? "")
+        }
+    }
+
+    private func folderRow(_ item: BrowseItem) -> some View {
+        let pick = PatchPick(
+            targetID: targetID,
+            rootPath: rootPath,
+            path: item.path,
+            isDirectory: item.isDirectory,
+            name: item.name
+        )
+        return HStack(spacing: 10) {
+            Button {
+                if selected.contains(pick) {
+                    selected.remove(pick)
+                } else {
+                    selected.insert(pick)
+                }
+            } label: {
+                Image(systemName: selected.contains(pick) ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(HATheme.accent)
+            }
+            .buttonStyle(.plain)
+            if item.isDirectory {
+                NavigationLink(value: CreateFolder(
+                    title: item.name,
+                    path: item.path,
+                    targetID: targetID,
+                    rootPath: rootPath
+                )) {
+                    HStack {
+                        Image(systemName: "folder.fill")
+                            .foregroundStyle(HATheme.accent)
+                        Text(item.name)
+                    }
+                }
+            } else {
+                Image(systemName: "doc")
+                    .foregroundStyle(HATheme.accent)
+                Text(item.name)
+            }
         }
     }
 
@@ -317,10 +328,8 @@ enum CreatePatchBuilder {
         for pick in picks {
             if pick.isDirectory {
                 rules.append(contentsOf: try walk(pick))
-            } else {
-                if let rule = try fileRule(path: pick.path, targetID: pick.targetID, root: pick.rootPath) {
-                    rules.append(rule)
-                }
+            } else if let rule = try fileRule(path: pick.path, targetID: pick.targetID, root: pick.rootPath) {
+                rules.append(rule)
             }
         }
         var seen = Set<String>()
@@ -352,12 +361,8 @@ enum CreatePatchBuilder {
         guard filePath == rootPath || filePath.hasPrefix(rootPath + "/") else {
             throw PatchError.unsafePath
         }
-        let rel: String
-        if filePath == rootPath {
-            return nil
-        } else {
-            rel = String(filePath.dropFirst(rootPath.count + 1))
-        }
+        guard filePath != rootPath else { return nil }
+        let rel = String(filePath.dropFirst(rootPath.count + 1))
         guard !rel.isEmpty, !rel.contains("..") else { throw PatchError.unsafePath }
         let data = try Data(contentsOf: fileURL)
         return PatchRule(
@@ -367,6 +372,11 @@ enum CreatePatchBuilder {
             replacementData: data
         )
     }
+}
+
+private struct ShareItem: Identifiable {
+    let url: URL
+    var id: String { url.path }
 }
 
 struct ShareSheet: UIViewControllerRepresentable {
