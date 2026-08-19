@@ -180,7 +180,7 @@ struct AppDetailView: View {
 
     private var statusText: String {
         if let installed {
-            return "\(installed.projectName) \u00b7 \(installed.receipt.entries.count) file(s)"
+            return "\(installed.projectName) - \(installed.receipt.entries.count) file(s)"
         }
         return "Not patched"
     }
@@ -252,7 +252,7 @@ struct AppDetailView: View {
                 .foregroundStyle(.primary)
                 .disabled(busy)
                 Button(action: pickPatch) {
-                    Label(busy ? "Applying\u2026" : "Patch", systemImage: "wrench.and.screwdriver")
+                    Label(busy ? "Applying..." : "Patch", systemImage: "wrench.and.screwdriver")
                 }
                 .foregroundStyle(.primary)
                 .disabled(busy)
@@ -280,7 +280,7 @@ struct AppDetailView: View {
             } header: {
                 Text("Data")
             } footer: {
-                Text(busy ? "Working\u2026" : "Clean empties Documents, Caches, or tmp.")
+                Text(busy ? "Working..." : "Clean empties Documents, Caches, or tmp.")
             }
         }
         .navigationTitle(app.displayName)
@@ -335,7 +335,7 @@ struct AppDetailView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                Text(size ?? "\u2014")
+                Text(size ?? "-")
                     .font(.caption)
                     .foregroundStyle(HATheme.secondaryText)
             }
