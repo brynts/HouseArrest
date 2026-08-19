@@ -166,6 +166,7 @@ struct AppDetailView: View {
     @State private var measuring = false
     @State private var busy = false
     @State private var pending: PendingClean?
+    @State private var showBrowse = false
 
     private var installed: InstalledPatchRecord? {
         appModel.installedPatches[app.bundleID]
@@ -211,11 +212,18 @@ struct AppDetailView: View {
             }
 
             Section("Actions") {
-                NavigationLink {
-                    ContainerBrowserView(app: app)
+                Button {
+                    showBrowse = true
                 } label: {
-                    Label("Browse files", systemImage: "folder")
+                    HStack {
+                        Label("Browse files", systemImage: "folder")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
                 }
+                .foregroundStyle(.primary)
                 Button(action: pickPatch) {
                     Label(busy ? "Applying…" : "Patch", systemImage: "wrench.and.screwdriver")
                 }
@@ -263,6 +271,10 @@ struct AppDetailView: View {
         .navigationTitle(app.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: loadUsage)
+        .fullScreenCover(isPresented: $showBrowse) {
+            ContainerBrowserView(app: app)
+                .environmentObject(appModel)
+        }
         .alert("Apps", isPresented: Binding(
             get: { message != nil },
             set: { if !$0 { message = nil } }
