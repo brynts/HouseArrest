@@ -36,7 +36,6 @@
 		A10000000000000000000020 /* FileEditors.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000020 /* FileEditors.swift */; };
 		A10000000000000000000021 /* FolderBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000021 /* FolderBrowserView.swift */; };
 		A10000000000000000000022 /* BrowseSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000022 /* BrowseSupport.swift */; };
-		A10000000000000000000023 /* HALog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000023 /* HALog.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -75,7 +74,6 @@
 		B10000000000000000000020 /* FileEditors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileEditors.swift; sourceTree = "<group>"; };
 		B10000000000000000000021 /* FolderBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderBrowserView.swift; sourceTree = "<group>"; };
 		B10000000000000000000022 /* BrowseSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowseSupport.swift; sourceTree = "<group>"; };
-		B10000000000000000000023 /* HALog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HALog.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -144,7 +142,6 @@
 				B1000000000000000000001C /* LaunchServicesStore.swift */,
 				B1000000000000000000001D /* AppCleanService.swift */,
 				B1000000000000000000001F /* ZipUtil.swift */,
-				B10000000000000000000023 /* HALog.swift */,
 				B1000000000000000000001A /* AppCatalog.m */,
 				B1000000000000000000001B /* AppCatalog.h */,
 			);
@@ -279,7 +276,6 @@
 				A10000000000000000000020 /* FileEditors.swift in Sources */,
 				A10000000000000000000021 /* FolderBrowserView.swift in Sources */,
 				A10000000000000000000022 /* BrowseSupport.swift in Sources */,
-				A10000000000000000000023 /* HALog.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
