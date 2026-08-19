@@ -37,16 +37,3 @@ xcodebuild -project HouseArrest.xcodeproj -scheme HouseArrest \
 ```
 
 GitHub Actions **Build IPA** is manual only and publishes an unsigned IPA on a draft release.
-
-## App icon
-
-Decoded App Icon lives at:
-
-`HouseArrest/Assets.xcassets/AppIcon.appiconset/AppIcon.png`
-
-If that file is missing after clone:
-
-```bash
-base64 -D -i HouseArrest/Assets.xcassets/AppIcon.appiconset/AppIcon.png.b64 \
-  -o HouseArrest/Assets.xcassets/AppIcon.appiconset/AppIcon.png
-```
