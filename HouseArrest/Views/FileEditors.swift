@@ -45,6 +45,8 @@ struct FileWorkspaceView: View {
             TextFileEditor(path: item.path, name: item.name, groupID: groupID, plistMode: true)
         case .text:
             TextFileEditor(path: item.path, name: item.name, groupID: groupID, plistMode: false)
+        case .zip:
+            ZipFileView(item: item, groupID: groupID)
         default:
             HexFileView(path: item.path, name: item.name, groupID: groupID)
         }
@@ -140,6 +142,7 @@ struct ImageFileView: View {
         .background(Color(.systemBackground))
         .navigationTitle(name)
         .navigationBarTitleDisplayMode(.inline)
+        .tint(HATheme.accent)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -162,11 +165,68 @@ struct ImageFileView: View {
     }
 }
 
+struct ZipFileView: View {
+    let item: BrowseItem
+    let groupID: String?
+    @State private var password = ""
+    @State private var status: String?
+    @State private var shareURL: URL?
+
+    var body: some View {
+        List {
+            Section("Archive") {
+                LabeledContent("Name", value: item.name)
+                LabeledContent("Size", value: ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file))
+            }
+            Section {
+                SecureField("Password (optional)", text: $password)
+                Button("Extract here") { extract() }
+            }
+        }
+        .navigationTitle(item.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .tint(HATheme.accent)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    shareFile(path: item.path, groupID: groupID) { shareURL = $0 }
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+            }
+        }
+        .sheet(isPresented: Binding(get: { shareURL != nil }, set: { if !$0 { shareURL = nil } })) {
+            if let shareURL { ActivityShareView(items: [shareURL]) }
+        }
+        .alert("Zip", isPresented: Binding(get: { status != nil }, set: { if !$0 { status = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(status ?? "")
+        }
+    }
+
+    private func extract() {
+        HAWork.queue.async {
+            do {
+                settleGrant(path: item.path, groupID: groupID)
+                let folder = URL(fileURLWithPath: item.path).deletingLastPathComponent().path
+                let name = URL(fileURLWithPath: item.path).deletingPathExtension().lastPathComponent
+                let dest = try FileOps.uniquePath(in: folder, name: name, rootPath: folder)
+                try FileManager.default.createDirectory(atPath: dest, withIntermediateDirectories: true)
+                try ZipUtil.unzip(file: item.path, to: dest, password: password)
+                DispatchQueue.main.async { status = "Extracted to \(URL(fileURLWithPath: dest).lastPathComponent)" }
+            } catch {
+                DispatchQueue.main.async { status = error.localizedDescription }
+            }
+        }
+    }
+}
+
 struct HexFileView: View {
     let path: String
     let name: String
     let groupID: String?
-    @State private var text = "Loading…"
+    @State private var text = "Loading\u{2026}"
     @State private var shareURL: URL?
 
     var body: some View {
@@ -180,6 +240,7 @@ struct HexFileView: View {
         .background(Color(.systemBackground))
         .navigationTitle(name)
         .navigationBarTitleDisplayMode(.inline)
+        .tint(HATheme.accent)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -237,6 +298,7 @@ struct FileInfoSheet: View {
             }
             .navigationTitle("Info")
             .navigationBarTitleDisplayMode(.inline)
+            .tint(HATheme.accent)
             .onAppear(perform: loadMode)
             .alert("Info", isPresented: Binding(get: { status != nil }, set: { if !$0 { status = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -283,7 +345,7 @@ func readFileText(path: String, plistMode: Bool) -> String {
         return text
     }
     if let text = String(data: data.prefix(400_000), encoding: .utf8) {
-        return data.count > 400_000 ? text + "\n…" : text
+        return data.count > 400_000 ? text + "\n\u{2026}" : text
     }
     return hexDump(path: path)
 }
@@ -299,8 +361,9 @@ func hexDump(path: String) -> String {
     while offset < bytes.count {
         let chunk = bytes[offset..<min(offset + 16, bytes.count)]
         let hex = chunk.map { String(format: "%02X", $0) }.joined(separator: " ")
-        let ascii = chunk.map { ($0 >= 32 && $0 < 127) ? Character(UnicodeScalar($0)) : "." }
-        lines.append(String(format: "%08X  %-47s  %s", offset, hex, String(ascii)))
+        let ascii = String(chunk.map { ($0 >= 32 && $0 < 127) ? Character(UnicodeScalar($0)) : "." })
+        let padded = hex + String(repeating: " ", count: max(0, 47 - hex.count))
+        lines.append(String(format: "%08X  ", offset) + padded + "  " + ascii)
         offset += 16
     }
     if data.count > slice.count {
