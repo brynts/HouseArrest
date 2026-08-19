@@ -71,11 +71,11 @@ struct CleanerView: View {
             .tint(HATheme.accent)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(selected.count == apps.count && !apps.isEmpty ? "None" : "Select All") {
-                        if selected.count == apps.count {
-                            selected.removeAll()
-                        } else {
+                    Button(selected.isEmpty ? "Select All" : "Deselect") {
+                        if selected.isEmpty {
                             selected = Set(apps.map(\.bundleID))
+                        } else {
+                            selected.removeAll()
                         }
                     }
                     .disabled(apps.isEmpty || busy)
@@ -170,6 +170,8 @@ struct CleanerView: View {
                 chip("Caches", isOn: $cleanCaches)
                 chip("tmp", isOn: $cleanTmp)
             }
+        } footer: {
+            Text("Documents is not cleaned here. Clearing it can delete saved files. Use an app page in Apps if you need that.")
         }
     }
 
