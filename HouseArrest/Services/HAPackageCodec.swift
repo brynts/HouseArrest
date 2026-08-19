@@ -1,6 +1,5 @@
 import Foundation
 import CryptoKit
-import Security
 
 /// HouseArrest package: magic `HAPATCH\0` + binary plist envelope (AES-GCM).
 enum HAPackageCodec {
@@ -35,9 +34,7 @@ enum HAPackageCodec {
         let key: SymmetricKey
         if protected, let password {
             var salt = Data(count: 16)
-            salt.withUnsafeMutableBytes { buf in
-                _ = SecRandomCopyBytes(kSecRandomDefault, 16, buf.baseAddress!)
-            }
+            for i in 0..<16 { salt[i] = UInt8.random(in: 0...255) }
             saltOrKey = salt
             key = derivedKey(password: password, salt: salt)
         } else {
