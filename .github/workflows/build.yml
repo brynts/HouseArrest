@@ -21,6 +21,17 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
+      - name: Decode AppIcon
+        run: |
+          python3 - <<'PY'
+          import base64
+          from pathlib import Path
+          folder = Path("HouseArrest/Assets.xcassets/AppIcon.appiconset")
+          raw = (folder / "AppIcon.png.b64").read_text().strip()
+          (folder / "AppIcon.png").write_bytes(base64.b64decode(raw))
+          print("wrote", folder / "AppIcon.png")
+          PY
+
       - name: Build (unsigned IPA)
         run: |
           set -euo pipefail
