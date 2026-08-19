@@ -91,7 +91,7 @@ struct ContainerBrowserView: View {
                 } header: {
                     Text("App Groups")
                 } footer: {
-                    Text("Open a group by ID, for example group.woodsign.widgy.")
+                    Text("Groups for this app are listed automatically.")
                 }
             }
             .listItemTint(HATheme.accent)
@@ -160,12 +160,7 @@ struct ContainerBrowserView: View {
         let dataPath = app.dataContainerPath
         HAWork.queue.async {
             if let dataPath { settleGrant(path: dataPath, groupID: nil) }
-            var found: [(String, String)] = []
-            for groupID in AppGroupLookup.remembered(for: bundleID) {
-                if let path = AppGroupLookup.resolve(groupID) {
-                    found.append((groupID, path))
-                }
-            }
+            let found = AppGroupLookup.discover(for: bundleID)
             DispatchQueue.main.async {
                 groups = found
                 loading = false
