@@ -16,9 +16,9 @@ struct BrowseItem: Identifiable, Hashable {
 
 struct ContainerBrowserView: View {
     @EnvironmentObject private var appModel: AppModel
+    @Environment(\.dismiss) private var dismiss
     let app: InstalledApp
 
-    @State private var path = NavigationPath()
     @State private var groups: [(id: String, path: String)] = []
     @State private var loading = true
     @State private var loaded = false
@@ -27,7 +27,7 @@ struct ContainerBrowserView: View {
     @State private var errorText: String?
 
     var body: some View {
-        NavigationStack(path: $path) {
+        NavigationStack {
             List {
                 if let dataPath = app.dataContainerPath {
                     Section("App data") {
@@ -78,6 +78,11 @@ struct ContainerBrowserView: View {
             }
             .navigationTitle("Browse")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Close") { dismiss() }
+                }
+            }
             .navigationDestination(for: BrowseNav.self) { route in
                 switch route {
                 case .folder(let title, let folder, let targetID, let root, let isGroup):
