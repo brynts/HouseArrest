@@ -69,6 +69,9 @@ enum PatchError: LocalizedError {
     case applyFailed(String)
     case invalidPackage
     case nothingToRestore
+    case passwordRequired
+    case wrongPassword
+    case nothingSelected
 
     var errorDescription: String? {
         switch self {
@@ -79,6 +82,9 @@ enum PatchError: LocalizedError {
         case .applyFailed(let detail): return "Apply failed: \(detail)"
         case .invalidPackage: return "Invalid or corrupted package."
         case .nothingToRestore: return "No backup to restore."
+        case .passwordRequired: return "This package needs a password."
+        case .wrongPassword: return "Wrong password."
+        case .nothingSelected: return "Select at least one file."
         }
     }
 }
