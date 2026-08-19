@@ -25,7 +25,7 @@ struct DeviceStorage {
         return DeviceStorage(used: max(total - available, 0), total: total)
     }
 
-    private static func bytes(_ value: Int64) -> String {
+    static func bytes(_ value: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: value, countStyle: .file)
     }
 }
@@ -34,6 +34,7 @@ struct CleanerView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var apps: [InstalledApp] = []
     @State private var selected = Set<String>()
+    @State private var usageByID: [String: ContainerUsage] = [:]
     @State private var storage = DeviceStorage.current()
     @State private var cleanCaches = true
     @State private var cleanTmp = true
@@ -51,7 +52,6 @@ struct CleanerView: View {
         NavigationStack {
             List {
                 storageSection
-                optionsSection
                 appsSection
             }
             .navigationTitle("Cleaner")
@@ -128,8 +128,8 @@ struct CleanerView: View {
     }
 
     private var storageSection: some View {
-        Section("iPhone") {
-            VStack(alignment: .leading, spacing: 10) {
+        Section {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text("Storage")
                     Spacer()
@@ -145,23 +145,34 @@ struct CleanerView: View {
                     }
                 }
                 .frame(height: 10)
-                Text("\(storage.freeLabel) available")
-                    .font(.caption)
-                    .foregroundStyle(HATheme.secondaryText)
+                HStack(spacing: 8) {
+                    chip("Caches", isOn: $cleanCaches)
+                    chip("tmp", isOn: $cleanTmp)
+                    Spacer()
+                    Text(storage.freeLabel + " free")
+                        .font(.caption)
+                        .foregroundStyle(HATheme.secondaryText)
+                }
             }
             .padding(.vertical, 4)
         }
     }
 
-    private var optionsSection: some View {
-        Section {
-            Toggle("Caches", isOn: $cleanCaches)
-            Toggle("tmp", isOn: $cleanTmp)
-        } header: {
-            Text("Clean")
-        } footer: {
-            Text("Documents are not included. Clean those from an app page.")
+    private func chip(_ title: String, isOn: Binding<Bool>) -> some View {
+        Button {
+            isOn.wrappedValue.toggle()
+        } label: {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    isOn.wrappedValue ? HATheme.accent.opacity(0.22) : Color.secondary.opacity(0.16),
+                    in: Capsule()
+                )
+                .foregroundStyle(isOn.wrappedValue ? HATheme.accent : HATheme.secondaryText)
         }
+        .buttonStyle(.plain)
     }
 
     private var appsSection: some View {
@@ -192,16 +203,29 @@ struct CleanerView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(app.displayName)
                                     .foregroundStyle(.primary)
+                                    .lineLimit(1)
                                 Text(app.bundleID)
                                     .font(.caption)
                                     .foregroundStyle(HATheme.secondaryText)
                                     .lineLimit(1)
                             }
+                            Spacer(minLength: 8)
+                            Text(sizeLabel(for: app))
+                                .font(.subheadline.monospacedDigit())
+                                .foregroundStyle(HATheme.secondaryText)
                         }
                     }
                 }
             }
         }
+    }
+
+    private func sizeLabel(for app: InstalledApp) -> String {
+        guard let usage = usageByID[app.bundleID] else { return "-" }
+        var total: Int64 = 0
+        if cleanCaches { total += usage.caches }
+        if cleanTmp { total += usage.tmp }
+        return DeviceStorage.bytes(total)
     }
 
     private func reload() {
@@ -215,6 +239,13 @@ struct CleanerView: View {
                 storage = snap
                 selected = selected.intersection(Set(list.map(\.bundleID)))
                 loading = false
+            }
+            for app in list {
+                guard let path = app.dataContainerPath else { continue }
+                let usage = AppDiscoveryService.usage(for: path)
+                DispatchQueue.main.async {
+                    usageByID[app.bundleID] = usage
+                }
             }
         }
     }
@@ -241,6 +272,12 @@ struct CleanerView: View {
                         areas: areas
                     ) { line in
                         DispatchQueue.main.async { appModel.log(line) }
+                    }
+                    if let path = app.dataContainerPath {
+                        let usage = AppDiscoveryService.usage(for: path)
+                        DispatchQueue.main.async {
+                            usageByID[app.bundleID] = usage
+                        }
                     }
                 } catch {
                     failed += 1
