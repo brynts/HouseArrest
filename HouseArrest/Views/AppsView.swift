@@ -167,12 +167,23 @@ struct AppDetailView: View {
     @State private var busy = false
     @State private var pending: PendingClean?
     @State private var showBrowse = false
+    @State private var showCreate = false
+    @State private var pendingPackage: Data?
+    @State private var applyPassword = ""
+    @State private var askPassword = false
 
     private var installed: InstalledPatchRecord? {
         appModel.installedPatches[app.bundleID]
     }
 
     private var canUnpatch: Bool { installed != nil && !busy }
+
+    private var statusText: String {
+        if let installed {
+            return "\(installed.projectName) \u00b7 \(installed.receipt.entries.count) file(s)"
+        }
+        return "Not patched"
+    }
 
     private struct PendingClean: Identifiable {
         let id = UUID()
@@ -224,25 +235,29 @@ struct AppDetailView: View {
                     }
                 }
                 .foregroundStyle(.primary)
-                Button(action: pickPatch) {
-                    Label(busy ? "Applying…" : "Patch", systemImage: "wrench.and.screwdriver")
-                }
-                .disabled(busy)
             }
 
             Section {
-                if let installed {
-                    Text(installed.projectName)
-                    Text("\(installed.receipt.entries.count) file(s)")
-                        .font(.caption)
-                        .foregroundStyle(HATheme.secondaryText)
-                } else {
-                    Text("Not patched")
-                        .foregroundStyle(HATheme.secondaryText)
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: installed == nil ? "circle.dashed" : "checkmark.seal.fill")
+                        .foregroundStyle(installed == nil ? HATheme.secondaryText : HATheme.accent)
+                    Text(statusText)
+                        .foregroundStyle(installed == nil ? HATheme.secondaryText : .primary)
                 }
+                Button {
+                    showCreate = true
+                } label: {
+                    Label("Create Patch", systemImage: "plus.rectangle.on.folder")
+                }
+                .foregroundStyle(.primary)
+                .disabled(busy)
+                Button(action: pickPatch) {
+                    Label(busy ? "Applying\u2026" : "Patch", systemImage: "wrench.and.screwdriver")
+                }
+                .foregroundStyle(.primary)
+                .disabled(busy)
                 Button(action: unpatch) {
-                    Text("Unpatch")
-                        .frame(maxWidth: .infinity)
+                    Label("Unpatch", systemImage: "arrow.uturn.backward")
                 }
                 .disabled(!canUnpatch)
                 .foregroundStyle(canUnpatch ? Color.red : Color.secondary)
@@ -250,7 +265,7 @@ struct AppDetailView: View {
                 Text("Patch")
             } footer: {
                 Text(installed == nil
-                     ? "Import a .ha package to patch this app."
+                     ? "Create a shareable .ha package, or import one to apply."
                      : "Unpatch restores the original files from backup.")
             }
 
@@ -265,7 +280,7 @@ struct AppDetailView: View {
             } header: {
                 Text("Data")
             } footer: {
-                Text(busy ? "Working…" : "Clean empties Documents, Caches, or tmp.")
+                Text(busy ? "Working\u2026" : "Clean empties Documents, Caches, or tmp.")
             }
         }
         .navigationTitle(app.displayName)
@@ -275,6 +290,10 @@ struct AppDetailView: View {
             ContainerBrowserView(app: app)
                 .environmentObject(appModel)
         }
+        .fullScreenCover(isPresented: $showCreate) {
+            CreatePatchView(app: app)
+                .environmentObject(appModel)
+        }
         .alert("Apps", isPresented: Binding(
             get: { message != nil },
             set: { if !$0 { message = nil } }
@@ -282,6 +301,18 @@ struct AppDetailView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(message ?? "")
+        }
+        .alert("Password", isPresented: $askPassword) {
+            SecureField("Package password", text: $applyPassword)
+            Button("Apply") {
+                if let pendingPackage { applyPatch(pendingPackage, password: applyPassword) }
+            }
+            Button("Cancel", role: .cancel) {
+                pendingPackage = nil
+                applyPassword = ""
+            }
+        } message: {
+            Text("This package is password protected.")
         }
         .confirmationDialog(
             pending?.title ?? "Clean",
@@ -304,7 +335,7 @@ struct AppDetailView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                Text(size ?? "—")
+                Text(size ?? "\u2014")
                     .font(.caption)
                     .foregroundStyle(HATheme.secondaryText)
             }
@@ -329,15 +360,30 @@ struct AppDetailView: View {
     private func pickPatch() {
         HADocumentPicker.presentHA { data in
             guard let data else { return }
-            applyPatch(data)
+            if HAPackageCodec.needsPassword(data) {
+                pendingPackage = data
+                applyPassword = ""
+                askPassword = true
+                return
+            }
+            applyPatch(data, password: nil)
         }
     }
 
-    private func applyPatch(_ data: Data) {
+    private func applyPatch(_ data: Data, password: String?) {
         busy = true
-        defer { busy = false }
+        defer {
+            busy = false
+            pendingPackage = nil
+            applyPassword = ""
+        }
         do {
-            let project = try HAPackageCodec.decode(data)
+            let project = try HAPackageCodec.decode(data, password: password)
+            let targets = Set(project.targets)
+            if !targets.contains(app.bundleID) && !targets.contains(where: { $0.hasPrefix("group.") }) {
+                message = "This package targets \(project.targets.joined(separator: ", ")), not \(app.bundleID)."
+                return
+            }
             let receipt = try PatchApplyService.apply(project: project) { appModel.log($0) }
             appModel.addProject(project)
             appModel.markPatched(bundleID: app.bundleID, projectName: project.name, receipt: receipt)
