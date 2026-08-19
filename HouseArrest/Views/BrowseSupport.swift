@@ -65,19 +65,8 @@ enum FileOps {
 }
 
 enum AppGroupLookup {
-    static func resolve(_ groupID: String) -> String? {
-        var err: NSString?
-        if let path = MCMActivateContainerPath(7, groupID, true, &err),
-           PathSafety.isAppGroupRoot(URL(fileURLWithPath: path)) {
-            return path
-        }
-        err = nil
-        if let path = MCMActivateContainerPath(7, groupID, false, &err),
-           PathSafety.isAppGroupRoot(URL(fileURLWithPath: path)) {
-            return path
-        }
-        return nil
-    }
+    private static var cache: [String: String] = [:]
+    private static var scanned = false
 
     static func belongs(_ groupID: String, to bundleID: String) -> Bool {
         let group = groupID.lowercased()
@@ -86,6 +75,43 @@ enum AppGroupLookup {
         let skip: Set<String> = ["com", "net", "org", "app", "ios", "group"]
         let tokens = bundle.split(separator: ".").map(String.init).filter { $0.count >= 4 && !skip.contains($0) }
         return tokens.contains { group.contains($0) }
+    }
+
+    static func discover(for bundleID: String) -> [(id: String, path: String)] {
+        scanIfNeeded()
+        var seen = Set<String>()
+        var result: [(id: String, path: String)] = []
+        for id in cache.keys.sorted() where belongs(id, to: bundleID) {
+            if let path = cache[id], seen.insert(id).inserted {
+                result.append((id, path))
+            }
+        }
+        for id in remembered(for: bundleID) where seen.insert(id).inserted {
+            if let path = resolve(id) {
+                result.append((id, path))
+            }
+        }
+        return result
+    }
+
+    static func resolve(_ groupID: String) -> String? {
+        if let path = cache[groupID] { return path }
+        scanIfNeeded()
+        if let path = cache[groupID] { return path }
+
+        var err: NSString?
+        if let path = MCMContainerPathForIdentifier(7, groupID, true, &err),
+           PathSafety.isAppGroupRoot(URL(fileURLWithPath: path)) {
+            cache[groupID] = path
+            return path
+        }
+        err = nil
+        if let path = MCMContainerPathForIdentifier(7, groupID, false, &err),
+           PathSafety.isAppGroupRoot(URL(fileURLWithPath: path)) {
+            cache[groupID] = path
+            return path
+        }
+        return nil
     }
 
     static func remember(_ groupID: String, for bundleID: String) {
@@ -108,13 +134,71 @@ enum AppGroupLookup {
 
     static func remembered(for bundleID: String) -> [String] {
         let explicit = explicitList(for: bundleID)
-        let filtered = rawList(for: bundleID).filter { groupID in
-            explicit.contains(groupID) || belongs(groupID, to: bundleID)
+        return rawList(for: bundleID).filter { explicit.contains($0) || belongs($0, to: bundleID) }
+    }
+
+    private static func scanIfNeeded() {
+        if scanned { return }
+        scanned = true
+        let parents = [
+            "/var/mobile/Containers/Shared/AppGroup",
+            "/private/var/mobile/Containers/Shared/AppGroup"
+        ]
+        var seen = Set<String>()
+        for parent in parents {
+            for path in listFolders(in: parent) where seen.insert(path).inserted {
+                if let id = identifier(in: path) {
+                    cache[id] = path
+                }
+            }
         }
-        if filtered != rawList(for: bundleID) {
-            UserDefaults.standard.set(filtered, forKey: key(bundleID))
+        HALog.write("app groups scanned=\(cache.count)")
+    }
+
+    private static func listFolders(in parent: String) -> [String] {
+        var pathC = Array(parent.utf8CString)
+        let handle = bad_query(&pathC, true, nil, false)
+        HALog.write("group parent grant \(parent)=\(handle)")
+        var names: [String] = []
+        if handle >= 0 {
+            if let listed = try? FileManager.default.contentsOfDirectory(atPath: parent) {
+                names = listed.filter(isUUID)
+            }
+            bad_query_release(handle)
         }
-        return filtered
+        if names.isEmpty {
+            var listPath = Array(parent.utf8CString)
+            if let listed = bad_query_list(&listPath, 2_000_000) {
+                let blob = String(cString: listed)
+                free(listed)
+                names = blob.split(whereSeparator: \.isNewline).compactMap { line in
+                    let name = URL(fileURLWithPath: String(line)).lastPathComponent
+                    return isUUID(name) ? name : nil
+                }
+            }
+        }
+        HALog.write("group parent list \(parent) count=\(names.count)")
+        return names.map { (parent as NSString).appendingPathComponent($0) }
+    }
+
+    private static func identifier(in path: String) -> String? {
+        let meta = (path as NSString).appendingPathComponent(".com.apple.mobile_container_manager.metadata.plist")
+        if let id = identifier(fromPlist: meta) { return id }
+        var pathC = Array(meta.utf8CString)
+        let handle = bad_query(&pathC, true, nil, false)
+        defer { if handle >= 0 { bad_query_release(handle) } }
+        return identifier(fromPlist: meta)
+    }
+
+    private static func identifier(fromPlist path: String) -> String? {
+        guard let dict = NSDictionary(contentsOfFile: path) as? [String: Any] else { return nil }
+        if let id = dict["MCMMetadataIdentifier"] as? String, id.hasPrefix("group.") { return id }
+        if let id = dict["MCMApplicationIdentifier"] as? String, id.hasPrefix("group.") { return id }
+        return nil
+    }
+
+    private static func isUUID(_ name: String) -> Bool {
+        name.count == 36 && name.utf8.filter { $0 == UInt8(ascii: "-") }.count == 4
     }
 
     private static func rawList(for bundleID: String) -> [String] {
