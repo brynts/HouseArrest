@@ -23,7 +23,8 @@ struct AppsView: View {
         NavigationStack {
             Group {
                 if isLoading && apps.isEmpty {
-                    VStack(spacing: 8) {
+                    VStack(spacing: 12) {
+                        ProgressView()
                         Text(scanTitle)
                             .font(.headline)
                         if scanTotal > 0 {
@@ -54,11 +55,14 @@ struct AppsView: View {
                     .listStyle(.insetGrouped)
                     .overlay(alignment: .top) {
                         if isLoading {
-                            Text(scanTotal > 0 ? "\(scanTitle)  \(scanCurrent)/\(scanTotal)" : scanTitle)
-                                .font(.footnote)
-                                .padding(.vertical, 6)
-                                .frame(maxWidth: .infinity)
-                                .background(HATheme.card.opacity(0.95))
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                Text(scanTotal > 0 ? "\(scanTitle)  \(scanCurrent)/\(scanTotal)" : scanTitle)
+                                    .font(.footnote)
+                            }
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity)
+                            .background(HATheme.card.opacity(0.95))
                         }
                     }
                 }
@@ -75,11 +79,14 @@ struct AppsView: View {
             .searchable(text: $search, prompt: "Name or bundle ID")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: refresh) {
-                        Image(systemName: "arrow.clockwise")
-                            .foregroundStyle(isLoading ? Color.secondary : HATheme.accent)
+                    if isLoading {
+                        ProgressView()
+                    } else {
+                        Button(action: refresh) {
+                            Image(systemName: "arrow.clockwise")
+                                .foregroundStyle(HATheme.accent)
+                        }
                     }
-                    .disabled(isLoading)
                 }
             }
             .refreshable { refresh() }
@@ -127,7 +134,7 @@ struct AppsView: View {
         if isLoading { return }
         isLoading = true
         errorText = nil
-        scanTitle = "Finding apps"
+        scanTitle = apps.isEmpty ? "Finding apps" : "Updating apps"
         scanCurrent = 0
         scanTotal = 0
         HAWork.queue.async {
