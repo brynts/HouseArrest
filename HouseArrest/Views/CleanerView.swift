@@ -65,7 +65,6 @@ struct CleanerView: View {
         NavigationStack {
             List {
                 storageSection
-                optionsSection
                 appsSection
             }
             .navigationTitle("Cleaner")
@@ -164,20 +163,13 @@ struct CleanerView: View {
                     .foregroundStyle(HATheme.secondaryText)
             }
             .padding(.vertical, 4)
-        }
-    }
 
-    private var optionsSection: some View {
-        Section {
             HStack {
-                Text("Clean")
-                    .foregroundStyle(HATheme.secondaryText)
+                Text("Folder to clean")
                 Spacer()
                 chip("Caches", isOn: $cleanCaches)
                 chip("tmp", isOn: $cleanTmp)
             }
-            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-            .listRowBackground(Color.clear)
         }
     }
 
