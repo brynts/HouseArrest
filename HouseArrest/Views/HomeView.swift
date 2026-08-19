@@ -3,74 +3,29 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject private var appModel: AppModel
 
+    private var records: [InstalledPatchRecord] {
+        appModel.installedPatches.values.sorted {
+            $0.receipt.appliedAt > $1.receipt.appliedAt
+        }
+    }
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    header
-                    statusCard
-                    deviceCard
-                }
-                .padding(16)
+            List {
+                deviceSection
+                patchesSection
             }
-            .background(HATheme.screen.ignoresSafeArea())
-            .navigationBarHidden(true)
+            .navigationTitle("HouseArrest")
+            .tint(HATheme.accent)
         }
+        .tint(HATheme.accent)
     }
 
-    private var header: some View {
-        Text("HouseArrest")
-            .font(.system(size: 28, weight: .bold, design: .rounded))
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var statusCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Patch tool", systemImage: "shippingbox.fill")
-                .font(.headline)
-                .foregroundStyle(HATheme.accent)
-
-            Text("Apply file replacements into app data and App Group containers.")
-                .font(.subheadline)
-                .foregroundStyle(HATheme.secondaryText)
-
-            HStack(spacing: 16) {
-                metric(title: "Projects", value: "\(appModel.projects.count)")
-                metric(title: "Log lines", value: "\(appModel.logLines.count)")
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(HATheme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(HATheme.cardStroke, lineWidth: 1)
-        )
-    }
-
-    private func metric(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(HATheme.secondaryText)
-            Text(value)
-                .font(.title3.weight(.semibold))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var deviceCard: some View {
+    private var deviceSection: some View {
         let d = appModel.device
-        return VStack(alignment: .leading, spacing: 0) {
-            Text("DEVICE")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(HATheme.secondaryText)
-                .padding(.bottom, 10)
-
-            row("Hardware model", d.hardwareModel)
-            Divider()
-            row("iOS Version", "\(d.systemVersion) (\(d.buildNumber))")
-            Divider()
+        return Section("Device") {
+            row("Hardware", d.hardwareModel)
+            row("iOS", "\(d.systemVersion) (\(d.buildNumber))")
             HStack {
                 Text("Compatibility")
                 Spacer()
@@ -82,28 +37,94 @@ struct HomeView: View {
                         .foregroundStyle(.yellow)
                 }
             }
-            .padding(.vertical, 10)
-
             Text(d.supportNote)
                 .font(.caption)
                 .foregroundStyle(HATheme.secondaryText)
-                .padding(.top, 4)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(HATheme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(HATheme.cardStroke, lineWidth: 1)
-        )
+    }
+
+    private var patchesSection: some View {
+        Section("Installed patches") {
+            if records.isEmpty {
+                Text("No patches applied")
+                    .foregroundStyle(HATheme.secondaryText)
+            } else {
+                ForEach(records, id: \.bundleID) { record in
+                    NavigationLink {
+                        PatchRecordView(record: record)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(record.projectName)
+                            Text(record.bundleID)
+                                .font(.caption)
+                                .foregroundStyle(HATheme.secondaryText)
+                            Text("\(record.receipt.entries.count) file(s)")
+                                .font(.caption)
+                                .foregroundStyle(HATheme.secondaryText)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private func row(_ title: String, _ value: String) -> some View {
         HStack {
             Text(title)
             Spacer()
-            Text(value).foregroundStyle(HATheme.secondaryText)
+            Text(value)
+                .foregroundStyle(HATheme.secondaryText)
+                .multilineTextAlignment(.trailing)
         }
-        .padding(.vertical, 10)
+    }
+}
+
+struct PatchRecordView: View {
+    let record: InstalledPatchRecord
+
+    private var groups: [(target: String, files: [ApplyReceipt.Entry])] {
+        var map: [String: [ApplyReceipt.Entry]] = [:]
+        for entry in record.receipt.entries {
+            map[entry.targetID, default: []].append(entry)
+        }
+        return map.keys.sorted().map { ($0, map[$0] ?? []) }
+    }
+
+    var body: some View {
+        List {
+            Section("Patch") {
+                row("Name", record.projectName)
+                row("App", record.bundleID)
+                row("Files", "\(record.receipt.entries.count)")
+                row("Applied", record.receipt.appliedAt.formatted(date: .abbreviated, time: .shortened))
+            }
+            ForEach(groups, id: \.target) { group in
+                Section(group.target) {
+                    ForEach(group.files, id: \.relativePath) { entry in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(entry.relativePath)
+                            if entry.backupPath != nil {
+                                Text("Original backed up")
+                                    .font(.caption)
+                                    .foregroundStyle(HATheme.secondaryText)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle(record.projectName)
+        .navigationBarTitleDisplayMode(.inline)
+        .tint(HATheme.accent)
+    }
+
+    private func row(_ title: String, _ value: String) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(value)
+                .foregroundStyle(HATheme.secondaryText)
+                .multilineTextAlignment(.trailing)
+        }
     }
 }
