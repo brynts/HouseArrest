@@ -33,6 +33,7 @@
 		A1000000000000000000001D /* AppCleanService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001D /* AppCleanService.swift */; };
 		A1000000000000000000001E /* ContainerBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001E /* ContainerBrowserView.swift */; };
 		A1000000000000000000001F /* ZipUtil.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001F /* ZipUtil.swift */; };
+		A10000000000000000000020 /* FileEditors.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000020 /* FileEditors.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -68,6 +69,7 @@
 		B1000000000000000000001D /* AppCleanService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCleanService.swift; sourceTree = "<group>"; };
 		B1000000000000000000001E /* ContainerBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContainerBrowserView.swift; sourceTree = "<group>"; };
 		B1000000000000000000001F /* ZipUtil.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipUtil.swift; sourceTree = "<group>"; };
+		B10000000000000000000020 /* FileEditors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileEditors.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -148,6 +150,7 @@
 				B1000000000000000000000A /* HomeView.swift */,
 				B10000000000000000000019 /* AppsView.swift */,
 				B1000000000000000000001E /* ContainerBrowserView.swift */,
+				B10000000000000000000020 /* FileEditors.swift */,
 				B1000000000000000000000B /* PatchesView.swift */,
 				B1000000000000000000000C /* LogsView.swift */,
 				B1000000000000000000000D /* SettingsView.swift */,
@@ -264,6 +267,7 @@
 				A1000000000000000000001D /* AppCleanService.swift in Sources */,
 				A1000000000000000000001E /* ContainerBrowserView.swift in Sources */,
 				A1000000000000000000001F /* ZipUtil.swift in Sources */,
+				A10000000000000000000020 /* FileEditors.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
