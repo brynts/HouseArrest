@@ -48,10 +48,24 @@ struct CleanerView: View {
         apps.filter { selected.contains($0.bundleID) }
     }
 
+    private var selectedBytes: Int64 {
+        selected.reduce(0) { partial, id in
+            partial + bytes(for: id)
+        }
+    }
+
+    private var cleanButtonTitle: String {
+        if busy { return progressText }
+        let count = selected.count
+        let appsText = "Clean \(count) app\(count == 1 ? "" : "s")"
+        return "\(appsText) (\(DeviceStorage.bytes(selectedBytes)))"
+    }
+
     var body: some View {
         NavigationStack {
             List {
                 storageSection
+                optionsSection
                 appsSection
             }
             .navigationTitle("Cleaner")
@@ -83,7 +97,7 @@ struct CleanerView: View {
                 Button {
                     askClean = true
                 } label: {
-                    Text(busy ? progressText : "Clean \(selected.count) app\(selected.count == 1 ? "" : "s")")
+                    Text(cleanButtonTitle)
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                 }
@@ -124,12 +138,12 @@ struct CleanerView: View {
         var parts: [String] = []
         if cleanCaches { parts.append("Caches") }
         if cleanTmp { parts.append("tmp") }
-        return "Clears \(parts.joined(separator: " and ")) for \(selected.count) third-party app\(selected.count == 1 ? "" : "s")."
+        return "Clears \(parts.joined(separator: " and ")) (\(DeviceStorage.bytes(selectedBytes))) for \(selected.count) third-party app\(selected.count == 1 ? "" : "s")."
     }
 
     private var storageSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 12) {
+        Section("iPhone") {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Text("Storage")
                     Spacer()
@@ -145,34 +159,23 @@ struct CleanerView: View {
                     }
                 }
                 .frame(height: 10)
-                HStack(spacing: 8) {
-                    chip("Caches", isOn: $cleanCaches)
-                    chip("tmp", isOn: $cleanTmp)
-                    Spacer()
-                    Text(storage.freeLabel + " free")
-                        .font(.caption)
-                        .foregroundStyle(HATheme.secondaryText)
-                }
+                Text(storage.freeLabel + " available")
+                    .font(.caption)
+                    .foregroundStyle(HATheme.secondaryText)
             }
             .padding(.vertical, 4)
         }
     }
 
-    private func chip(_ title: String, isOn: Binding<Bool>) -> some View {
-        Button {
-            isOn.wrappedValue.toggle()
-        } label: {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(
-                    isOn.wrappedValue ? HATheme.accent.opacity(0.22) : Color.secondary.opacity(0.16),
-                    in: Capsule()
-                )
-                .foregroundStyle(isOn.wrappedValue ? HATheme.accent : HATheme.secondaryText)
+    private var optionsSection: some View {
+        Section {
+            Toggle("Caches", isOn: $cleanCaches)
+            Toggle("tmp", isOn: $cleanTmp)
+        } header: {
+            Text("Include")
+        } footer: {
+            Text("Turn off an option to skip it when cleaning.")
         }
-        .buttonStyle(.plain)
     }
 
     private var appsSection: some View {
@@ -220,12 +223,17 @@ struct CleanerView: View {
         }
     }
 
-    private func sizeLabel(for app: InstalledApp) -> String {
-        guard let usage = usageByID[app.bundleID] else { return "-" }
+    private func bytes(for bundleID: String) -> Int64 {
+        guard let usage = usageByID[bundleID] else { return 0 }
         var total: Int64 = 0
         if cleanCaches { total += usage.caches }
         if cleanTmp { total += usage.tmp }
-        return DeviceStorage.bytes(total)
+        return total
+    }
+
+    private func sizeLabel(for app: InstalledApp) -> String {
+        guard usageByID[app.bundleID] != nil else { return "-" }
+        return DeviceStorage.bytes(bytes(for: app.bundleID))
     }
 
     private func reload() {
