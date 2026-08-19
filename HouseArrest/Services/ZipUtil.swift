@@ -13,9 +13,15 @@ enum ZipUtil {
             var isDir: ObjCBool = false
             guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir) else { continue }
             if isDir.boolValue {
-                for file in try walk(path) {
-                    let rel = relative(from: (path as NSString).deletingLastPathComponent, to: file)
-                    try appendFile(file, name: rel, password: pwd, body: &body, centrals: &centrals)
+                let folderName = URL(fileURLWithPath: path).lastPathComponent + "/"
+                try appendDirectory(folderName, body: &body, centrals: &centrals)
+                for entry in try walk(path) {
+                    let rel = relative(from: (path as NSString).deletingLastPathComponent, to: entry.path)
+                    if entry.isDirectory {
+                        try appendDirectory(rel.hasSuffix("/") ? rel : rel + "/", body: &body, centrals: &centrals)
+                    } else {
+                        try appendFile(entry.path, name: rel, password: pwd, body: &body, centrals: &centrals)
+                    }
                 }
             } else {
                 try appendFile(
@@ -80,6 +86,47 @@ enum ZipUtil {
         (name as NSString).pathExtension.lowercased() == "zip"
     }
 
+    private static func appendDirectory(
+        _ name: String,
+        body: inout Data,
+        centrals: inout [Data]
+    ) throws {
+        let nameData = Data(name.utf8)
+        let offset = UInt32(body.count)
+        var local = Data()
+        local.append(contentsOf: [0x50, 0x4b, 0x03, 0x04, 20, 0])
+        put16(&local, 0)
+        put16(&local, 0)
+        put16(&local, 0)
+        put16(&local, 0)
+        put32(&local, 0)
+        put32(&local, 0)
+        put32(&local, 0)
+        put16(&local, UInt16(nameData.count))
+        put16(&local, 0)
+        local.append(nameData)
+        body.append(local)
+
+        var central = Data()
+        central.append(contentsOf: [0x50, 0x4b, 0x01, 0x02, 20, 0, 20, 0])
+        put16(&central, 0)
+        put16(&central, 0)
+        put16(&central, 0)
+        put16(&central, 0)
+        put32(&central, 0)
+        put32(&central, 0)
+        put32(&central, 0)
+        put16(&central, UInt16(nameData.count))
+        put16(&central, 0)
+        put16(&central, 0)
+        put16(&central, 0)
+        put16(&central, 0)
+        put32(&central, 0x10)
+        put32(&central, offset)
+        central.append(nameData)
+        centrals.append(central)
+    }
+
     private static func appendFile(
         _ path: String,
         name: String,
@@ -132,14 +179,20 @@ enum ZipUtil {
         centrals.append(central)
     }
 
-    private static func walk(_ folder: String) throws -> [String] {
+    private static func walk(_ folder: String) throws -> [(path: String, isDirectory: Bool)] {
         guard let enumerator = FileManager.default.enumerator(atPath: folder) else { return [] }
-        var files: [String] = []
+        var files: [(String, Bool)] = []
         for case let name as String in enumerator {
             let full = (folder as NSString).appendingPathComponent(name)
             var isDir: ObjCBool = false
-            if FileManager.default.fileExists(atPath: full, isDirectory: &isDir), !isDir.boolValue {
-                files.append(full)
+            guard FileManager.default.fileExists(atPath: full, isDirectory: &isDir) else { continue }
+            if isDir.boolValue {
+                let children = (try? FileManager.default.contentsOfDirectory(atPath: full)) ?? []
+                if children.isEmpty {
+                    files.append((full, true))
+                }
+            } else {
+                files.append((full, false))
             }
         }
         return files
