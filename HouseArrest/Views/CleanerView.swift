@@ -86,7 +86,6 @@ struct CleanerView: View {
                     Text(busy ? progressText : "Clean \(selected.count) app\(selected.count == 1 ? "" : "s")")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(HATheme.accent)
@@ -155,9 +154,11 @@ struct CleanerView: View {
     }
 
     private var optionsSection: some View {
-        Section("Clean") {
+        Section {
             Toggle("Caches", isOn: $cleanCaches)
             Toggle("tmp", isOn: $cleanTmp)
+        } header: {
+            Text("Clean")
         } footer: {
             Text("Documents are not included. Clean those from an app page.")
         }
