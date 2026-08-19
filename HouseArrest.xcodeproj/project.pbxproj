@@ -36,3 +36,42 @@
 		A10000000000000000000020 /* FileEditors.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000020 /* FileEditors.swift */; };
 		A10000000000000000000021 /* FolderBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000021 /* FolderBrowserView.swift */; };
 		A10000000000000000000022 /* BrowseSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000022 /* BrowseSupport.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		C10000000000000000000001 /* HouseArrest.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HouseArrest.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B10000000000000000000001 /* HouseArrestApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HouseArrestApp.swift; sourceTree = "<group>"; };
+		B10000000000000000000002 /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
+		B10000000000000000000003 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		B10000000000000000000004 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		B10000000000000000000005 /* PatchModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchModels.swift; sourceTree = "<group>"; };
+		B10000000000000000000006 /* DeviceInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceInfo.swift; sourceTree = "<group>"; };
+		B10000000000000000000007 /* ContainerAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContainerAccess.swift; sourceTree = "<group>"; };
+		B10000000000000000000008 /* PatchApplyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchApplyService.swift; sourceTree = "<group>"; };
+		B10000000000000000000009 /* HAPackageCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HAPackageCodec.swift; sourceTree = "<group>"; };
+		B1000000000000000000000A /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		B1000000000000000000000B /* PatchesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchesView.swift; sourceTree = "<group>"; };
+		B1000000000000000000000C /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
+		B1000000000000000000000D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		B1000000000000000000000E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B1000000000000000000000F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B10000000000000000000010 /* FileImporterRepresentableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileImporterRepresentableView.swift; sourceTree = "<group>"; };
+		B10000000000000000000011 /* UTType+HA.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UTType+HA.swift"; sourceTree = "<group>"; };
+		B10000000000000000000012 /* bad_query.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = bad_query.c; sourceTree = "<group>"; };
+		B10000000000000000000013 /* mcm_bridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = mcm_bridge.m; sourceTree = "<group>"; };
+		B10000000000000000000014 /* bad_query.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bad_query.h; sourceTree = "<group>"; };
+		B10000000000000000000015 /* mcm_bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = mcm_bridge.h; sourceTree = "<group>"; };
+		B10000000000000000000016 /* Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Bridging-Header.h"; sourceTree = "<group>"; };
+		B10000000000000000000017 /* InstalledApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstalledApp.swift; sourceTree = "<group>"; };
+		B10000000000000000000018 /* AppDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDiscoveryService.swift; sourceTree = "<group>"; };
+		B10000000000000000000019 /* AppsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppsView.swift; sourceTree = "<group>"; };
+		B1000000000000000000001A /* AppCatalog.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppCatalog.m; sourceTree = "<group>"; };
+		B1000000000000000000001B /* AppCatalog.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppCatalog.h; sourceTree = "<group>"; };
+		B1000000000000000000001C /* LaunchServicesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchServicesStore.swift; sourceTree = "<group>"; };
+		B1000000000000000000001D /* AppCleanService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCleanService.swift; sourceTree = "<group>"; };
+		B1000000000000000000001E /* ContainerBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContainerBrowserView.swift; sourceTree = "<group>"; };
+		B1000000000000000000001F /* ZipUtil.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipUtil.swift; sourceTree = "<group>"; };
+		B10000000000000000000020 /* FileEditors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileEditors.swift; sourceTree = "<group>"; };
+		B10000000000000000000021 /* FolderBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderBrowserView.swift; sourceTree = "<group>"; };
+		B10000000000000000000022 /* BrowseSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowseSupport.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
