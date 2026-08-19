@@ -32,6 +32,34 @@ jobs:
           print("wrote", folder / "AppIcon.png")
           PY
 
+      - name: Recolor AppIcon to mint
+        run: |
+          python3 -m pip install --quiet pillow
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+
+          path = Path("HouseArrest/Assets.xcassets/AppIcon.appiconset/AppIcon.png")
+          image = Image.open(path).convert("RGB")
+          pixels = image.load()
+          width, height = image.size
+          # HouseArrest accent #33C7B8 and a darker lock tone
+          mint = (51, 199, 184)
+          mint_dark = (37, 143, 132)
+          changed = 0
+          for y in range(height):
+              for x in range(width):
+                  r, g, b = pixels[x, y]
+                  if (r, g, b) == (232, 168, 74):
+                      pixels[x, y] = mint
+                      changed += 1
+                  elif (r, g, b) == (184, 122, 40):
+                      pixels[x, y] = mint_dark
+                      changed += 1
+          image.save(path)
+          print(f"recolored {changed} pixels -> {path}")
+          PY
+
       - name: Build (unsigned IPA)
         run: |
           set -euo pipefail
