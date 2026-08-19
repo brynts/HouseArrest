@@ -65,34 +65,116 @@ enum FileOps {
 }
 
 enum AppGroupLookup {
-    static func resolve(_ groupID: String) -> String? {
-        var err: NSString?
-        if let path = MCMActivateContainerPath(7, groupID, true, &err),
-           PathSafety.isAppGroupRoot(URL(fileURLWithPath: path)) {
-            return path
+    private static var cache: [String: String] = [:]
+    private static var scanned = false
+
+    static func belongs(_ groupID: String, to bundleID: String) -> Bool {
+        let group = groupID.lowercased()
+        let bundle = bundleID.lowercased()
+        if group.contains(bundle) { return true }
+        let skip: Set<String> = ["com", "net", "org", "app", "ios", "group"]
+        let tokens = bundle.split(separator: ".").map(String.init).filter { $0.count >= 4 && !skip.contains($0) }
+        return tokens.contains { group.contains($0) }
+    }
+
+    static func discover(for bundleID: String) -> [(id: String, path: String)] {
+        scanIfNeeded()
+        var seen = Set<String>()
+        var result: [(id: String, path: String)] = []
+        for id in cache.keys.sorted() where belongs(id, to: bundleID) {
+            if let path = cache[id], seen.insert(id).inserted {
+                result.append((id, path))
+            }
         }
-        err = nil
-        if let path = MCMActivateContainerPath(7, groupID, false, &err),
-           PathSafety.isAppGroupRoot(URL(fileURLWithPath: path)) {
+        for id in remembered(for: bundleID) where seen.insert(id).inserted {
+            if let path = resolve(id) {
+                result.append((id, path))
+            }
+        }
+        return result
+    }
+
+    static func resolve(_ groupID: String) -> String? {
+        if let path = cache[groupID] { return path }
+        scanIfNeeded()
+        if let path = cache[groupID] { return path }
+        if let path = lookupPath(groupID) {
+            cache[groupID] = path
             return path
         }
         return nil
     }
 
     static func remember(_ groupID: String, for bundleID: String) {
-        var list = remembered(for: bundleID)
+        var list = rawList(for: bundleID)
         if !list.contains(groupID) {
             list.insert(groupID, at: 0)
             UserDefaults.standard.set(list, forKey: key(bundleID))
         }
+        var explicit = explicitList(for: bundleID)
+        if !explicit.contains(groupID) {
+            explicit.insert(groupID, at: 0)
+            UserDefaults.standard.set(explicit, forKey: explicitKey(bundleID))
+        }
+    }
+
+    static func forget(_ groupID: String, for bundleID: String) {
+        UserDefaults.standard.set(rawList(for: bundleID).filter { $0 != groupID }, forKey: key(bundleID))
+        UserDefaults.standard.set(explicitList(for: bundleID).filter { $0 != groupID }, forKey: explicitKey(bundleID))
     }
 
     static func remembered(for bundleID: String) -> [String] {
+        let explicit = explicitList(for: bundleID)
+        return rawList(for: bundleID).filter { explicit.contains($0) || belongs($0, to: bundleID) }
+    }
+
+    private static func scanIfNeeded() {
+        if scanned { return }
+        scanned = true
+        enumerateViaMCM()
+        HALog.write("app groups scanned=\(cache.count)")
+    }
+
+    private static func enumerateViaMCM() {
+        var err: NSString?
+        let raw = MCMEnumerateIdentifiersForClass(7, 2000, &err)
+        let ids = (raw as? [String]) ?? []
+        HALog.write("group enumerate count=\(ids.count) err=\(err ?? "none")")
+        for id in ids where id.hasPrefix("group.") {
+            if let path = lookupPath(id) {
+                cache[id] = path
+            }
+        }
+    }
+
+    private static func lookupPath(_ groupID: String) -> String? {
+        var err: NSString?
+        if let path = MCMContainerPathForIdentifier(7, groupID, true, &err),
+           PathSafety.isAppGroupRoot(URL(fileURLWithPath: path)) {
+            return path
+        }
+        err = nil
+        if let path = MCMContainerPathForIdentifier(7, groupID, false, &err),
+           PathSafety.isAppGroupRoot(URL(fileURLWithPath: path)) {
+            return path
+        }
+        return nil
+    }
+
+    private static func rawList(for bundleID: String) -> [String] {
         UserDefaults.standard.stringArray(forKey: key(bundleID)) ?? []
+    }
+
+    private static func explicitList(for bundleID: String) -> [String] {
+        UserDefaults.standard.stringArray(forKey: explicitKey(bundleID)) ?? []
     }
 
     private static func key(_ bundleID: String) -> String {
         "ha.groups.\(bundleID)"
+    }
+
+    private static func explicitKey(_ bundleID: String) -> String {
+        "ha.groups.explicit.\(bundleID)"
     }
 }
 

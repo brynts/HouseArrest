@@ -12,6 +12,7 @@ enum HAPackageCodec {
         let publicContentKey: Data
         let keyFingerprint: Data
         let encryptedPayload: Data
+        var passwordProtected: Bool?
     }
 
     private struct Payload: Codable {
@@ -19,9 +20,28 @@ enum HAPackageCodec {
         let digests: [String: Data]
     }
 
-    static func encode(project: PatchProject) throws -> Data {
-        let key = SymmetricKey(size: .bits256)
-        let keyData = key.withUnsafeBytes { Data($0) }
+    static func needsPassword(_ data: Data) -> Bool {
+        guard data.count > magic.count, data.prefix(magic.count) == magic else { return false }
+        guard let envelope = try? PropertyListDecoder().decode(Envelope.self, from: data.dropFirst(magic.count)) else {
+            return false
+        }
+        return envelope.passwordProtected == true
+    }
+
+    static func encode(project: PatchProject, password: String? = nil) throws -> Data {
+        let protected = !(password?.isEmpty ?? true)
+        let saltOrKey: Data
+        let key: SymmetricKey
+        if protected, let password {
+            var salt = Data(count: 16)
+            for i in 0..<16 { salt[i] = UInt8.random(in: 0...255) }
+            saltOrKey = salt
+            key = derivedKey(password: password, salt: salt)
+        } else {
+            key = SymmetricKey(size: .bits256)
+            saltOrKey = key.withUnsafeBytes { Data($0) }
+        }
+
         let digests = Dictionary(uniqueKeysWithValues: project.rules.map {
             ($0.id.uuidString, Data(SHA256.hash(data: $0.replacementData)))
         })
@@ -31,30 +51,46 @@ enum HAPackageCodec {
         let sealed = try AES.GCM.seal(plain, using: key, authenticating: aad)
         guard let combined = sealed.combined else { throw PatchError.invalidPackage }
 
+        let keyData = key.withUnsafeBytes { Data($0) }
         let envelope = Envelope(
             schemaVersion: schemaVersion,
             packageID: project.id,
-            publicContentKey: keyData,
+            publicContentKey: saltOrKey,
             keyFingerprint: Data(SHA256.hash(data: keyData)),
-            encryptedPayload: combined
+            encryptedPayload: combined,
+            passwordProtected: protected
         )
-        let encoded = try PropertyListEncoder().encode(envelope)
-        return magic + encoded
+        return magic + (try PropertyListEncoder().encode(envelope))
     }
 
-    static func decode(_ data: Data) throws -> PatchProject {
+    static func decode(_ data: Data, password: String? = nil) throws -> PatchProject {
         guard data.count > magic.count, data.prefix(magic.count) == magic else {
             throw PatchError.invalidPackage
         }
         let envelope = try PropertyListDecoder().decode(Envelope.self, from: data.dropFirst(magic.count))
-        guard envelope.schemaVersion == schemaVersion,
-              Data(SHA256.hash(data: envelope.publicContentKey)) == envelope.keyFingerprint
-        else { throw PatchError.invalidPackage }
+        guard envelope.schemaVersion == schemaVersion else { throw PatchError.invalidPackage }
 
-        let key = SymmetricKey(data: envelope.publicContentKey)
+        let key: SymmetricKey
+        if envelope.passwordProtected == true {
+            guard let password, !password.isEmpty else { throw PatchError.passwordRequired }
+            key = derivedKey(password: password, salt: envelope.publicContentKey)
+            let fingerprint = Data(SHA256.hash(data: key.withUnsafeBytes { Data($0) }))
+            guard fingerprint == envelope.keyFingerprint else { throw PatchError.wrongPassword }
+        } else {
+            guard Data(SHA256.hash(data: envelope.publicContentKey)) == envelope.keyFingerprint else {
+                throw PatchError.invalidPackage
+            }
+            key = SymmetricKey(data: envelope.publicContentKey)
+        }
+
         let aad = Data("HAPATCH/v\(envelope.schemaVersion)/\(envelope.packageID.uuidString)".utf8)
         let box = try AES.GCM.SealedBox(combined: envelope.encryptedPayload)
-        let plain = try AES.GCM.open(box, using: key, authenticating: aad)
+        let plain: Data
+        do {
+            plain = try AES.GCM.open(box, using: key, authenticating: aad)
+        } catch {
+            throw envelope.passwordProtected == true ? PatchError.wrongPassword : PatchError.invalidPackage
+        }
         let payload = try PropertyListDecoder().decode(Payload.self, from: plain)
         guard payload.project.id == envelope.packageID else { throw PatchError.invalidPackage }
         for rule in payload.project.rules {
@@ -63,13 +99,13 @@ enum HAPackageCodec {
         }
         return payload.project
     }
-}
 
-extension FileManager {
-    func zipItem(at source: URL, to destination: URL) throws {
-        if fileExists(atPath: destination.path) {
-            try removeItem(at: destination)
-        }
-        try copyItem(at: source, to: destination)
+    private static func derivedKey(password: String, salt: Data) -> SymmetricKey {
+        HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: SymmetricKey(data: Data(password.utf8)),
+            salt: salt,
+            info: Data("HAPATCH-password".utf8),
+            outputByteCount: 32
+        )
     }
 }

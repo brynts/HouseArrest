@@ -38,15 +38,18 @@ enum GrantCache {
     static func grantOnce(path: String, groupID: String? = nil) -> Int64 {
         if paths.contains(path) { return 0 }
         HALog.write("grant \(path)")
-        var pathC = Array(path.utf8CString)
-        let handle: Int64
-        if let groupID {
+        var handle: Int64 = -1
+        if let groupID, groupID.hasPrefix("group.") {
+            var pathC = Array(path.utf8CString)
             var groupC = Array(groupID.utf8CString)
             handle = bad_query(&pathC, true, &groupC, true)
-        } else {
-            handle = bad_query(&pathC, true, nil, false)
+            HALog.write("grant group \(groupID) result=\(handle)")
         }
-        HALog.write("grant result=\(handle)")
+        if handle < 0 {
+            var pathC = Array(path.utf8CString)
+            handle = bad_query(&pathC, true, nil, false)
+            HALog.write("grant result=\(handle)")
+        }
         if handle >= 0 { paths.insert(path) }
         return handle
     }
@@ -68,7 +71,7 @@ final class MHAContainerAccess: ContainerAccessing {
     func resolveRoot(targetID: String) throws -> URL {
         let id = try PathSafety.validateTargetID(targetID)
         if id.hasPrefix("group.") {
-            guard let path = Self.resolveAppGroup(id) else {
+            guard let path = AppGroupLookup.resolve(id) else {
                 throw PatchError.targetUnavailable(id)
             }
             return URL(fileURLWithPath: path)
@@ -97,21 +100,6 @@ final class MHAContainerAccess: ContainerAccessing {
               PathSafety.isAppDataRoot(URL(fileURLWithPath: path))
         else { return nil }
         return path
-    }
-
-    private static func resolveAppGroup(_ groupID: String) -> String? {
-        let attempts: [(UInt64, Bool)] = [
-            (appGroupMCMClass, true),
-            (appGroupMCMClass, false),
-            (2, true),
-            (1, true)
-        ]
-        for (cls, asGroup) in attempts {
-            var err: NSString?
-            guard let path = MCMActivateContainerPath(cls, groupID, asGroup, &err) else { continue }
-            if PathSafety.isAppGroupRoot(URL(fileURLWithPath: path)) { return path }
-        }
-        return nil
     }
 }
 
