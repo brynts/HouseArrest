@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Security
 
 /// HouseArrest package: magic `HAPATCH\0` + binary plist envelope (AES-GCM).
 enum HAPackageCodec {
