@@ -12,6 +12,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore valid project.pbxproj
+        run: |
+          set -euo pipefail
+          # Last known complete pbxproj on this branch (before empty/PLACEHOLDER overwrites)
+          git show c347e96b36fd9401f0bfacf58359e846c30da726:HouseArrest.xcodeproj/project.pbxproj > HouseArrest.xcodeproj/project.pbxproj
+          wc -c HouseArrest.xcodeproj/project.pbxproj
+          head -c 80 HouseArrest.xcodeproj/project.pbxproj
+          echo
+          # Ensure scheme exists
+          mkdir -p HouseArrest.xcodeproj/xcshareddata/xcschemes
+          if [ ! -f HouseArrest.xcodeproj/xcshareddata/xcschemes/HouseArrest.xcscheme ]; then
+            git show c347e96b36fd9401f0bfacf58359e846c30da726:HouseArrest.xcodeproj/xcshareddata/xcschemes/HouseArrest.xcscheme > HouseArrest.xcodeproj/xcshareddata/xcschemes/HouseArrest.xcscheme || true
+          fi
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -19,20 +35,10 @@ jobs:
           xcode-version: latest-stable
 
       - name: Show Xcode version
-        run: |
-          xcodebuild -version
-          ls /Applications/ | grep -i xcode || true
+        run: xcodebuild -version
 
-      - name: Debug project file
-        run: |
-          set -euo pipefail
-          echo "=== project.pbxproj head ==="
-          head -c 120 HouseArrest.xcodeproj/project.pbxproj
-          echo
-          echo "=== size ==="
-          wc -c HouseArrest.xcodeproj/project.pbxproj
-          echo "=== xcodebuild -list ==="
-          xcodebuild -list -project HouseArrest.xcodeproj || true
+      - name: List project
+        run: xcodebuild -list -project HouseArrest.xcodeproj
 
       - name: Build (unsigned IPA)
         run: |
