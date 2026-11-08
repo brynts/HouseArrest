@@ -1,1 +1,43 @@
-// PLACEHOLDER_WILL_REPLACE
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* HouseArrestApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000001 /* HouseArrestApp.swift */; };
+		A10000000000000000000002 /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000002 /* RootTabView.swift */; };
+		A10000000000000000000003 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000003 /* Theme.swift */; };
+		A1000000000000000000000E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000E /* Assets.xcassets */; };
+		A10000000000000000000004 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000004 /* AppModel.swift */; };
+		A10000000000000000000005 /* PatchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000005 /* PatchModels.swift */; };
+		A10000000000000000000017 /* InstalledApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* InstalledApp.swift */; };
+		A10000000000000000000006 /* DeviceInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000006 /* DeviceInfo.swift */; };
+		A10000000000000000000007 /* ContainerAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000007 /* ContainerAccess.swift */; };
+		A100000000000000000000F4 /* HALog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000F4 /* HALog.swift */; };
+		A10000000000000000000008 /* PatchApplyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000008 /* PatchApplyService.swift */; };
+		A10000000000000000000009 /* HAPackageCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000009 /* HAPackageCodec.swift */; };
+		A10000000000000000000018 /* AppDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000018 /* AppDiscoveryService.swift */; };
+		A1000000000000000000001C /* LaunchServicesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001C /* LaunchServicesStore.swift */; };
+		A1000000000000000000001D /* AppCleanService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001D /* AppCleanService.swift */; };
+		A1000000000000000000001F /* ZipUtil.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001F /* ZipUtil.swift */; };
+		A1000000000000000000001A /* AppCatalog.m in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001A /* AppCatalog.m */; };
+		A1000000000000000000000A /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000A /* HomeView.swift */; };
+		A1000000000000000000000B /* PatchesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000B /* PatchesView.swift */; };
+		A1000000000000000000000C /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000C /* LogsView.swift */; };
+		A1000000000000000000000D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000D /* SettingsView.swift */; };
+		A10000000000000000000019 /* AppsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000019 /* AppsView.swift */; };
+		A10000000000000000000024 /* CleanerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000024 /* CleanerView.swift */; };
+		A1000000000000000000001E /* ContainerBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001E /* ContainerBrowserView.swift */; };
+		A10000000000000000000021 /* FolderBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000021 /* FolderBrowserView.swift */; };
+		A10000000000000000000022 /* BrowseSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000022 /* BrowseSupport.swift */; };
+		A10000000000000000000023 /* CreatePatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000023 /* CreatePatchView.swift */; };
+		A10000000000000000000020 /* FileEditors.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000020 /* FileEditors.swift */; };
+		A10000000000000000000010 /* FileImporterRepresentableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000010 /* FileImporterRepresentableView.swift */; };
+		A10000000000000000000011 /* UTType+HA.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000011 /* UTType+HA.swift */; };
+		A10000000000000000000012 /* bad_query.c in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000012 /* bad_query.c */; };
+		A100000000000000000000F2 /* worse_query.m in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000F2 /* worse_query.m */; };
+		A10000000000000000000013 /* mcm_bridge.m in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000013 /* mcm_bridge.m */; };
+/* End PBXBuildFile section */
