@@ -52,17 +52,18 @@ enum GrantCache {
         paths.insert(path)
     }
 
-    /// Call bad_query only once per path in this process.
-    static func grantOnce(path: String, groupID: String?) -> Int64 {
+    /// Grant sandbox extension via worse_query (App Group symlink escape).
+    /// `groupID` is only used as a hint for iOS 26 App Group flag selection.
+    static func grantOnce(path: String, groupID: String? = nil) -> Int64 {
         if paths.contains(path) { return 0 }
+        HALog.write("grant \(path)")
+        let isAppGroupPath = path.contains("/Shared/AppGroup")
+            || (groupID?.hasPrefix("group.") == true)
+        let major = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+        let altFlags = isAppGroupPath && major == 26
         var pathC = Array(path.utf8CString)
-        let handle: Int64
-        if let groupID {
-            var groupC = Array(groupID.utf8CString)
-            handle = bad_query(&pathC, true, &groupC, true)
-        } else {
-            handle = bad_query(&pathC, true, nil, false)
-        }
+        let handle = bad_query(&pathC, true, nil, altFlags)
+        HALog.write("grant result=\(handle) alt=\(altFlags)")
         if handle >= 0 { paths.insert(path) }
         return handle
     }
