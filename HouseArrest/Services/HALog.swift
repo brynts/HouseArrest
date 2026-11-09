@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 
 enum HALog {
@@ -85,11 +84,9 @@ enum GrantCache {
         let v = ProcessInfo.processInfo.operatingSystemVersion
         let backend = ha_query_backend()
         HALog.write("grant begin \(path) ios=\(v.majorVersion).\(v.minorVersion).\(v.patchVersion) backend=\(backend)")
-        var info = stat()
-        let rc = lstat(path, &info)
-        let err = rc == 0 ? 0 : errno
-        HALog.write("grant lstat rc=\(rc) errno=\(err) mode=\(rc == 0 ? info.st_mode : 0)")
-        if rc != 0 {
+        let err = Int(ha_lstat_errno(path))
+        HALog.write("grant lstat errno=\(err)")
+        if err != 0 {
             HALog.write("grant stop \(path) lstat-failed")
             return Int64(-254)
         }
