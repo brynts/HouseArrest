@@ -64,6 +64,11 @@ static void addProxy(NSMutableDictionary *result, id app) {
 
 static NSDictionary *appsFromWorkspace(void) {
     NSMutableDictionary *result = [NSMutableDictionary dictionary];
+    // iOS 26+: allInstalledApplications / allApplications terminates the process.
+    if (@available(iOS 26.0, *)) {
+        probe(@"skip LSApplicationWorkspace (iOS 26+ kills the process)");
+        return result;
+    }
     Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
     probe(@"LSApplicationWorkspace class=%@", workspaceClass ? NSStringFromClass(workspaceClass) : @"nil");
     SEL defaultSel = NSSelectorFromString(@"defaultWorkspace");
@@ -165,6 +170,7 @@ NSDictionary<NSString *, NSDictionary *> *HAInstalledAppCatalog(void) {
 }
 
 static id proxyForBundleID(NSString *bundleID) {
+    if (@available(iOS 26.0, *)) return nil;
     Class proxyClass = NSClassFromString(@"LSApplicationProxy");
     SEL sel = NSSelectorFromString(@"applicationProxyForIdentifier:");
     if (!proxyClass || ![proxyClass respondsToSelector:sel]) return nil;
