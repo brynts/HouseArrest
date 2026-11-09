@@ -10,9 +10,23 @@
 		A10000000000000000000001 /* HouseArrest.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HouseArrest.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A10000000000000000000010 /* Exceptions for "HouseArrest" folder in "HouseArrest" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				HouseArrest.entitlements,
+				Info.plist,
+			);
+			target = A10000000000000000000006 /* HouseArrest */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A10000000000000000000002 /* HouseArrest */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A10000000000000000000010 /* Exceptions for "HouseArrest" folder in "HouseArrest" target */,
+			);
 			path = HouseArrest;
 			sourceTree = "<group>";
 		};
