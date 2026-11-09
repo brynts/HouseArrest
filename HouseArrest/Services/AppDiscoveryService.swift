@@ -69,18 +69,7 @@ enum AppDiscoveryService {
             }
         }
         if byID.isEmpty {
-            for folder in listApplicationContainers() {
-                var pathC = Array(folder.utf8CString)
-                let handle = bad_query(&pathC, true, nil, false)
-                defer { if handle >= 0 { bad_query_release(handle) } }
-                guard let bundleID = bundleID(fromContainer: folder) else { continue }
-                if byID[bundleID] != nil { continue }
-                byID[bundleID] = InstalledApp(
-                    bundleID: bundleID,
-                    displayName: lastComponent(bundleID),
-                    dataContainerPath: folder
-                )
-            }
+            merge(mcmAppCatalog(), into: &byID)
         }
 
         let result = enrich(byID, progress: progress).values.sorted {
@@ -88,8 +77,7 @@ enum AppDiscoveryService {
         }
         cachedApps = result
         didFullScan = true
-        seenUUIDs = Set(listApplicationContainers().map(containerUUID))
-        seenUUIDs.formUnion(result.compactMap { $0.dataContainerPath.map(containerUUID) })
+        seenUUIDs = Set(result.compactMap { $0.dataContainerPath.map(containerUUID) })
         lastProbe = "scan apps=\(result.count) seen=\(seenUUIDs.count)\n" + lastProbe
         HALog.write("scan done apps=\(result.count) seen=\(seenUUIDs.count)")
         return result
@@ -119,6 +107,7 @@ enum AppDiscoveryService {
 
         var added: [String: InstalledApp] = [:]
         for folder in newFolders {
+            guard !haIsContainerParent(folder) else { continue }
             var pathC = Array(folder.utf8CString)
             let handle = bad_query(&pathC, true, nil, false)
             defer { if handle >= 0 { bad_query_release(handle) } }
@@ -182,10 +171,9 @@ enum AppDiscoveryService {
             var path = info["container"] as? String
             if path == nil || path?.isEmpty == true {
                 var err: NSString?
-                path = MCMActivateContainerPath(2, bundleID, false, &err)
+                path = MCMContainerPathForIdentifier(2, bundleID, false, &err)
             }
-            if let p = path, !FileManager.default.fileExists(atPath: p) { path = nil }
-            if let p = path, !PathSafety.isAppDataRoot(URL(fileURLWithPath: p)) { path = nil }
+            if let p = path, haIsContainerParent(p) { path = nil }
             byID[bundleID] = InstalledApp(
                 bundleID: bundleID,
                 displayName: lastComponent(bundleID),
@@ -194,51 +182,41 @@ enum AppDiscoveryService {
         }
     }
 
-    private static func listApplicationContainers() -> [String] {
-        let parents = [
-            "/var/mobile/Containers/Data/Application",
-            "/private/var/mobile/Containers/Data/Application"
-        ]
-        var seen = Set<String>()
-        var result: [String] = []
-        for parent in parents {
-            guard GrantCache.isSupportedTarget(parent) else {
-                HALog.write("list skip \(parent)")
-                continue
-            }
-            HALog.write("list grant \(parent)")
-            var pathC = Array(parent.utf8CString)
-            let handle = bad_query(&pathC, true, nil, false)
-            HALog.write("list grant \(parent)=\(handle)")
-            if handle >= 0 {
-                if let names = try? FileManager.default.contentsOfDirectory(atPath: parent) {
-                    let uuids = names.filter(isUUID)
-                    HALog.write("list fm \(parent) count=\(uuids.count)")
-                    for name in uuids {
-                        let path = normalizePath((parent as NSString).appendingPathComponent(name))
-                        if seen.insert(path).inserted { result.append(path) }
-                    }
-                }
-                bad_query_release(handle)
-            }
-            if result.isEmpty {
-                var listPath = Array(parent.utf8CString)
-                if let listed = bad_query_list(&listPath, 2_000_000) {
-                    let blob = String(cString: listed)
-                    free(listed)
-                    let names = blob.split(whereSeparator: \.isNewline).compactMap { line -> String? in
-                        let name = URL(fileURLWithPath: String(line)).lastPathComponent
-                        return isUUID(name) ? name : nil
-                    }
-                    HALog.write("list bq \(parent) count=\(names.count)")
-                    for name in names {
-                        let path = normalizePath((parent as NSString).appendingPathComponent(name))
-                        if seen.insert(path).inserted { result.append(path) }
-                    }
-                }
-            }
+    private static func mcmAppCatalog() -> [AnyHashable: Any] {
+        HALog.write("mcm enum start")
+        var err: NSString?
+        let ids = MCMEnumerateIdentifiersForClass(2, 400, &err) ?? []
+        HALog.write("mcm enum count=\(ids.count) err=\(err ?? "none")")
+        var catalog: [AnyHashable: Any] = [:]
+        for id in ids where id.contains(".") {
+            var pathErr: NSString?
+            let path = MCMContainerPathForIdentifier(2, id, false, &pathErr)
+            var info: [String: Any] = [:]
+            if let path, !path.isEmpty, !haIsContainerParent(path) { info["container"] = path }
+            catalog[id] = info
         }
-        return result
+        HALog.write("mcm apps=\(catalog.count)")
+        return catalog
+    }
+
+    private static func listApplicationContainers() -> [String] {
+        mcmAppCatalog().values.compactMap { value in
+            (value as? [String: Any])?["container"] as? String
+        }
+    }
+
+    private static func haIsContainerParent(_ path: String) -> Bool {
+        let roots = [
+            "/var/mobile/Containers/Data/Application",
+            "/private/var/mobile/Containers/Data/Application",
+            "/var/mobile/Containers/Data/InternalDaemon",
+            "/private/var/mobile/Containers/Data/InternalDaemon",
+            "/var/mobile/Containers/Data/PluginKitPlugin",
+            "/private/var/mobile/Containers/Data/PluginKitPlugin",
+            "/var/mobile/Containers/Shared/AppGroup",
+            "/private/var/mobile/Containers/Shared/AppGroup"
+        ]
+        return roots.contains(path)
     }
 
     private static func bundleID(fromContainer path: String) -> String? {
