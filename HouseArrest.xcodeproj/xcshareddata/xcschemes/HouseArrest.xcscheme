@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "1600"
+   LastUpgradeVersion = "2600"
    version = "1.7">
    <BuildAction
       parallelizeBuildables = "YES"
@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "F10000000000000000000001"
+               BlueprintIdentifier = "A10000000000000000000006"
                BuildableName = "HouseArrest.app"
                BlueprintName = "HouseArrest"
                ReferencedContainer = "container:HouseArrest.xcodeproj">
@@ -43,7 +43,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "F10000000000000000000001"
+            BlueprintIdentifier = "A10000000000000000000006"
             BuildableName = "HouseArrest.app"
             BlueprintName = "HouseArrest"
             ReferencedContainer = "container:HouseArrest.xcodeproj">
@@ -60,7 +60,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "F10000000000000000000001"
+            BlueprintIdentifier = "A10000000000000000000006"
             BuildableName = "HouseArrest.app"
             BlueprintName = "HouseArrest"
             ReferencedContainer = "container:HouseArrest.xcodeproj">
