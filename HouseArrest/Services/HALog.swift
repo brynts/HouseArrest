@@ -68,6 +68,10 @@ enum GrantCache {
         paths.insert(path)
     }
 
+    static func unmark(_ path: String) {
+        paths.remove(path)
+    }
+
     static func isSupportedTarget(_ path: String) -> Bool {
         supportedRoots.contains { path == $0 || path.hasPrefix($0 + "/") }
     }
