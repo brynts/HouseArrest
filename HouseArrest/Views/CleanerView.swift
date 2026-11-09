@@ -262,13 +262,7 @@ struct CleanerView: View {
                 selected = selected.intersection(Set(list.map(\.bundleID)))
                 loading = false
             }
-            for app in list {
-                guard let path = app.dataContainerPath else { continue }
-                let usage = AppDiscoveryService.usage(for: path)
-                DispatchQueue.main.async {
-                    usageByID[app.bundleID] = usage
-                }
-            }
+            HALog.write("cleaner listed \(list.count) without grant")
         }
     }
 
