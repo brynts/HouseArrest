@@ -25,6 +25,7 @@ enum AppDiscoveryService {
     private static var cachedApps: [InstalledApp] = []
     private static var didFullScan = false
     private static var seenUUIDs = Set<String>()
+    private static var didLogXattrErrno = false
     private static var itunesCache: [String: (name: String, icon: UIImage?)] = [:]
 
     static func discover(
@@ -56,7 +57,8 @@ enum AppDiscoveryService {
     private static func fullScan(
         progress: ((String, Int, Int) -> Void)?
     ) -> [InstalledApp] {
-        HALog.write("scan start")
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        HALog.write("scan start ios=\(v.majorVersion).\(v.minorVersion).\(v.patchVersion) backend=\(ha_query_backend())")
         lastProbe = ""
         var byID: [String: InstalledApp] = [:]
         progress?("Finding apps", 0, 0)
@@ -247,7 +249,13 @@ enum AppDiscoveryService {
     private static func readIdentifier(_ path: String) -> String? {
         var buf = [CChar](repeating: 0, count: 512)
         let len = getxattr(path, "com.apple.containermanager.identifier", &buf, 511, 0, 0)
-        guard len > 0 else { return nil }
+        if len <= 0 {
+            if !didLogXattrErrno {
+                didLogXattrErrno = true
+                HALog.write("xattr errno=\(errno) path=\(path)")
+            }
+            return nil
+        }
         let id = String(cString: buf)
         return id.contains(".") ? id : nil
     }
