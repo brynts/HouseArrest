@@ -11,15 +11,14 @@ enum LaunchServicesStore {
 
         var lsdError: NSString?
         if let service = MCMActivateContainerPath(10, "com.apple.lsd", false, &lsdError) {
-            cachePaths.append((service as NSString).appendingPathComponent("Library/Caches"))
+            let caches = (service as NSString).appendingPathComponent("Library/Caches")
+            if GrantCache.isSupportedTarget(caches) {
+                cachePaths.append(caches)
+            }
             probe.append("lsd container=\(service)")
         } else {
             probe.append("lsd MCM class-10 failed \(lsdError ?? "none")")
         }
-
-        cachePaths.append("/var/mobile/Library/Caches")
-        cachePaths.append("/private/var/mobile/Library/Caches")
-        cachePaths.append("/var/db/lsd")
 
         var seen = Set<String>()
         var ids: [String] = []
@@ -50,15 +49,7 @@ enum LaunchServicesStore {
         var probe: [String] = []
         var seen = Set<String>()
         var ids: [String] = []
-        var paths = knownCachePaths
-        if paths.isEmpty {
-            paths = [
-                "/private/var/mobile/Library/Caches",
-                "/var/mobile/Library/Caches",
-                "/var/db/lsd"
-            ]
-        }
-        for cache in paths {
+        for cache in knownCachePaths {
             let names = (try? FileManager.default.contentsOfDirectory(atPath: cache)) ?? []
             probe.append("refresh cache \(cache) files=\(names.count)")
             ids.append(contentsOf: collectIDs(in: cache, names: names, seen: &seen, probe: &probe))
