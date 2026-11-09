@@ -71,6 +71,9 @@ enum AppDiscoveryService {
         if byID.isEmpty {
             merge(mcmAppCatalog(), into: &byID)
         }
+        if !byID.keys.contains(where: { !isSystemBundle($0) }) {
+            merge(leakedAppCatalog(progress: progress), into: &byID)
+        }
 
         let result = enrich(byID, progress: progress).values.sorted {
             $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
@@ -186,7 +189,7 @@ enum AppDiscoveryService {
         HALog.write("mcm enum start")
         var err: NSString?
         let ids = MCMEnumerateIdentifiersForClass(2, 400, &err) ?? []
-        HALog.write("mcm enum count=\(ids.count) err=\(err ?? "none")")
+        HALog.write("mcm enum count=\(ids.count) err=\(err ?? "none") ids=\(ids.prefix(8).joined(separator: ","))")
         var catalog: [AnyHashable: Any] = [:]
         for id in ids where id.contains(".") {
             var pathErr: NSString?
@@ -197,6 +200,53 @@ enum AppDiscoveryService {
         }
         HALog.write("mcm apps=\(catalog.count)")
         return catalog
+    }
+
+    private static func leakedAppCatalog(
+        progress: ((String, Int, Int) -> Void)?
+    ) -> [AnyHashable: Any] {
+        let baseline = ha_baseline_inode()
+        HALog.write("leak baseline=\(baseline)")
+        guard baseline > 0 else { return [:] }
+        let found = NSMutableArray()
+        var cursor: UInt64 = 1
+        let step: UInt64 = 100_000
+        while cursor <= baseline {
+            let end = min(baseline, cursor &+ step &- 1)
+            ha_leak_app_containers(cursor, end, found)
+            HALog.write("leak inode=\(end) found=\(found.count)")
+            progress?("Reading containers", Int(min(end, UInt64(Int.max))), Int(min(baseline, UInt64(Int.max))))
+            if end == baseline { break }
+            cursor = end &+ 1
+        }
+        HALog.write("leak paths=\(found.count)")
+        var catalog: [AnyHashable: Any] = [:]
+        for case let path as String in found {
+            guard !haIsContainerParent(path) else { continue }
+            var id = containerIdentifier(path)
+            if id == nil { id = bundleID(fromContainer: path) }
+            guard let id, id.contains(".") else {
+                HALog.write("leak unnamed \(path)")
+                continue
+            }
+            catalog[id] = ["container": path]
+            HALog.write("leak app \(id)")
+        }
+        HALog.write("leak apps=\(catalog.count)")
+        return catalog
+    }
+
+    private static func containerIdentifier(_ path: String) -> String? {
+        HALog.write("leak grant \(path)")
+        var pathC = Array(path.utf8CString)
+        let handle = bad_query(&pathC, true, nil, false)
+        HALog.write("leak grant \(path)=\(handle)")
+        guard handle >= 0 else { return nil }
+        defer { bad_query_release(handle) }
+        var buf = [CChar](repeating: 0, count: 512)
+        let len = getxattr(path, "com.apple.containermanager.identifier", &buf, 511, 0, 0)
+        guard len > 0 else { return nil }
+        return String(cString: buf)
     }
 
     private static func listApplicationContainers() -> [String] {
