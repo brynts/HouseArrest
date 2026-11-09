@@ -484,6 +484,15 @@ struct AppDetailView: View {
     }
 
     private func loadUsage() {
-        HALog.write("detail open \(app.bundleID) path=\(app.dataContainerPath ?? "nil")")
+        guard let path = app.dataContainerPath, usage == nil else { return }
+        HALog.write("detail open \(app.bundleID)")
+        measuring = true
+        HAWork.queue.async {
+            let result = AppDiscoveryService.usage(for: path)
+            DispatchQueue.main.async {
+                usage = result
+                measuring = false
+            }
+        }
     }
 }
