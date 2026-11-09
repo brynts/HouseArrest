@@ -3,41 +3,249 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 110;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		A10000000000000000000001 /* HouseArrestApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000001 /* HouseArrestApp.swift */; };
-		A10000000000000000000002 /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000002 /* RootTabView.swift */; };
-		A10000000000000000000003 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000003 /* Theme.swift */; };
-		A1000000000000000000000E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000E /* Assets.xcassets */; };
-		A10000000000000000000004 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000004 /* AppModel.swift */; };
-		A10000000000000000000005 /* PatchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000005 /* PatchModels.swift */; };
-		A10000000000000000000017 /* InstalledApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* InstalledApp.swift */; };
-		A10000000000000000000006 /* DeviceInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000006 /* DeviceInfo.swift */; };
-		A10000000000000000000007 /* ContainerAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000007 /* ContainerAccess.swift */; };
-		A100000000000000000000F4 /* HALog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000F4 /* HALog.swift */; };
-		A10000000000000000000008 /* PatchApplyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000008 /* PatchApplyService.swift */; };
-		A10000000000000000000009 /* HAPackageCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000009 /* HAPackageCodec.swift */; };
-		A10000000000000000000018 /* AppDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000018 /* AppDiscoveryService.swift */; };
-		A1000000000000000000001C /* LaunchServicesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001C /* LaunchServicesStore.swift */; };
-		A1000000000000000000001D /* AppCleanService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001D /* AppCleanService.swift */; };
-		A1000000000000000000001F /* ZipUtil.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001F /* ZipUtil.swift */; };
-		A1000000000000000000001A /* AppCatalog.m in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001A /* AppCatalog.m */; };
-		A1000000000000000000000A /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000A /* HomeView.swift */; };
-		A1000000000000000000000B /* PatchesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000B /* PatchesView.swift */; };
-		A1000000000000000000000C /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000C /* LogsView.swift */; };
-		A1000000000000000000000D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000D /* SettingsView.swift */; };
-		A10000000000000000000019 /* AppsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000019 /* AppsView.swift */; };
-		A10000000000000000000024 /* CleanerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000024 /* CleanerView.swift */; };
-		A1000000000000000000001E /* ContainerBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001E /* ContainerBrowserView.swift */; };
-		A10000000000000000000021 /* FolderBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000021 /* FolderBrowserView.swift */; };
-		A10000000000000000000022 /* BrowseSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000022 /* BrowseSupport.swift */; };
-		A10000000000000000000023 /* CreatePatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000023 /* CreatePatchView.swift */; };
-		A10000000000000000000020 /* FileEditors.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000020 /* FileEditors.swift */; };
-		A10000000000000000000010 /* FileImporterRepresentableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000010 /* FileImporterRepresentableView.swift */; };
-		A10000000000000000000011 /* UTType+HA.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000011 /* UTType+HA.swift */; };
-		A10000000000000000000012 /* bad_query.c in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000012 /* bad_query.c */; };
-		A100000000000000000000F2 /* worse_query.m in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000F2 /* worse_query.m */; };
-		A10000000000000000000013 /* mcm_bridge.m in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000013 /* mcm_bridge.m */; };
-/* End PBXBuildFile section */
+/* Begin PBXFileReference section */
+		A10000000000000000000001 /* HouseArrest.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HouseArrest.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		A10000000000000000000002 /* HouseArrest */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = HouseArrest;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A10000000000000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A10000000000000000000004 = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000002 /* HouseArrest */,
+				A10000000000000000000005 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A10000000000000000000005 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000001 /* HouseArrest.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A10000000000000000000006 /* HouseArrest */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1000000000000000000000A /* Build configuration list for PBXNativeTarget "HouseArrest" */;
+			buildPhases = (
+				A10000000000000000000007 /* Sources */,
+				A10000000000000000000003 /* Frameworks */,
+				A10000000000000000000008 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				A10000000000000000000002 /* HouseArrest */,
+			);
+			name = HouseArrest;
+			productName = HouseArrest;
+			productReference = A10000000000000000000001 /* HouseArrest.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A10000000000000000000009 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					A10000000000000000000006 = {
+						CreatedOnToolsVersion = 26.0;
+						LastSwiftMigration = 2600;
+					};
+				};
+			};
+			buildConfigurationList = A1000000000000000000000B /* Build configuration list for PBXProject "HouseArrest" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A10000000000000000000004;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 110;
+			productRefGroup = A10000000000000000000005 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A10000000000000000000006 /* HouseArrest */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A10000000000000000000008 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A10000000000000000000007 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A1000000000000000000000C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A1000000000000000000000D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A1000000000000000000000E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = HouseArrest/HouseArrest.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/HouseArrest",
+					"$(SRCROOT)/HouseArrest/exploit",
+					"$(SRCROOT)/HouseArrest/Services",
+				);
+				INFOPLIST_FILE = HouseArrest/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = HouseArrest;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-lz",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.apple.mobile.MobileHouseArrest;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "HouseArrest/Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A1000000000000000000000F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = HouseArrest/HouseArrest.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/HouseArrest",
+					"$(SRCROOT)/HouseArrest/exploit",
+					"$(SRCROOT)/HouseArrest/Services",
+				);
+				INFOPLIST_FILE = HouseArrest/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = HouseArrest;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-lz",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.apple.mobile.MobileHouseArrest;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "HouseArrest/Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A1000000000000000000000B /* Build configuration list for PBXProject "HouseArrest" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1000000000000000000000C /* Debug */,
+				A1000000000000000000000D /* Release */,
+			);
+			defaultConfigurationName = Release;
+		};
+		A1000000000000000000000A /* Build configuration list for PBXNativeTarget "HouseArrest" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1000000000000000000000E /* Debug */,
+				A1000000000000000000000F /* Release */,
+			);
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A10000000000000000000009 /* Project object */;
+}
