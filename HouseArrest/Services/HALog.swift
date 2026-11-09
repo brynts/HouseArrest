@@ -44,6 +44,21 @@ enum HALog {
 enum GrantCache {
     private static var paths = Set<String>()
 
+    private static let supportedRoots = [
+        "/var/mobile/Containers/Data/Application",
+        "/private/var/mobile/Containers/Data/Application",
+        "/var/mobile/Containers/Data/InternalDaemon",
+        "/private/var/mobile/Containers/Data/InternalDaemon",
+        "/var/mobile/Containers/Data/PluginKitPlugin",
+        "/private/var/mobile/Containers/Data/PluginKitPlugin",
+        "/var/mobile/Containers/Shared/AppGroup",
+        "/private/var/mobile/Containers/Shared/AppGroup",
+        "/var/containers/Data/System",
+        "/private/var/containers/Data/System",
+        "/var/containers/Shared/SystemGroup",
+        "/private/var/containers/Shared/SystemGroup"
+    ]
+
     static func contains(_ path: String) -> Bool {
         paths.contains(path)
     }
@@ -52,10 +67,19 @@ enum GrantCache {
         paths.insert(path)
     }
 
-    /// Grant sandbox extension via worse_query (App Group symlink escape).
-    /// `groupID` is only used as a hint for iOS 26 App Group flag selection.
+    static func isSupportedTarget(_ path: String) -> Bool {
+        supportedRoots.contains { path == $0 || path.hasPrefix($0 + "/") }
+    }
+
+    /// Grant sandbox extension via bad_query / worse_query.
+    /// Paths outside the known container roots are skipped. Querying them
+    /// (for example /var/mobile/Library/Caches) kills the process.
     static func grantOnce(path: String, groupID: String? = nil) -> Int64 {
         if paths.contains(path) { return 0 }
+        guard isSupportedTarget(path) else {
+            HALog.write("grant skip \(path)")
+            return -100
+        }
         HALog.write("grant \(path)")
         let isAppGroupPath = path.contains("/Shared/AppGroup")
             || (groupID?.hasPrefix("group.") == true)
