@@ -68,6 +68,20 @@ enum AppDiscoveryService {
                 addIfNeeded(bundleID, into: &byID)
             }
         }
+        if byID.isEmpty {
+            for folder in listApplicationContainers() {
+                var pathC = Array(folder.utf8CString)
+                let handle = bad_query(&pathC, true, nil, false)
+                defer { if handle >= 0 { bad_query_release(handle) } }
+                guard let bundleID = bundleID(fromContainer: folder) else { continue }
+                if byID[bundleID] != nil { continue }
+                byID[bundleID] = InstalledApp(
+                    bundleID: bundleID,
+                    displayName: lastComponent(bundleID),
+                    dataContainerPath: folder
+                )
+            }
+        }
 
         let result = enrich(byID, progress: progress).values.sorted {
             $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
