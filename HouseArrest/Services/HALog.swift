@@ -86,16 +86,12 @@ enum GrantCache {
         HALog.write("grant begin \(path) ios=\(v.majorVersion).\(v.minorVersion).\(v.patchVersion) backend=\(backend)")
         let err = Int(ha_lstat_errno(path))
         HALog.write("grant lstat errno=\(err)")
-        if err != 0 {
-            HALog.write("grant stop \(path) lstat-failed")
-            return Int64(-254)
-        }
         let isAppGroupPath = path.contains("/Shared/AppGroup")
             || (groupID?.hasPrefix("group.") == true)
         let altFlags = isAppGroupPath && v.majorVersion == 26
-        HALog.write("grant query \(path) alt=\(altFlags) create=false")
+        HALog.write("grant query \(path) alt=\(altFlags)")
         var pathC = Array(path.utf8CString)
-        let handle = bad_query(&pathC, false, nil, altFlags)
+        let handle = bad_query(&pathC, true, nil, altFlags)
         HALog.write("grant result=\(handle) alt=\(altFlags)")
         if handle >= 0 { paths.insert(path) }
         return handle
