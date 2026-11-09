@@ -202,6 +202,11 @@ enum AppDiscoveryService {
         var seen = Set<String>()
         var result: [String] = []
         for parent in parents {
+            guard GrantCache.isSupportedTarget(parent) else {
+                HALog.write("list skip \(parent)")
+                continue
+            }
+            HALog.write("list grant \(parent)")
             var pathC = Array(parent.utf8CString)
             let handle = bad_query(&pathC, true, nil, false)
             HALog.write("list grant \(parent)=\(handle)")
