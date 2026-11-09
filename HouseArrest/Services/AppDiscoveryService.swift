@@ -39,7 +39,13 @@ enum AppDiscoveryService {
     }
 
     static func usage(for path: String) -> ContainerUsage {
-        _ = GrantCache.grantOnce(path: path)
+        let handle = GrantCache.grantOnce(path: path)
+        defer {
+            if handle > 0 {
+                bad_query_release(handle)
+                GrantCache.unmark(path)
+            }
+        }
         let root = path as NSString
         return ContainerUsage(
             documents: directorySize(at: root.appendingPathComponent("Documents")),
@@ -210,7 +216,7 @@ enum AppDiscoveryService {
         let cached = loadCachedContainers()
         if cached.count > 1 {
             HALog.write("leak cache=\(cached.count)")
-            return catalogFromContainerPaths(cached)
+            return catalogFromContainerPaths(cached, progress: progress)
         }
         let baseline = ha_baseline_inode()
         HALog.write("leak baseline=\(baseline)")
@@ -229,20 +235,78 @@ enum AppDiscoveryService {
         let paths = found.compactMap { $0 as? String }
         HALog.write("leak paths=\(paths.count)")
         saveCachedContainers(paths)
-        return catalogFromContainerPaths(paths)
+        return catalogFromContainerPaths(paths, progress: progress)
     }
 
-    private static func catalogFromContainerPaths(_ paths: [String]) -> [AnyHashable: Any] {
+    private static func catalogFromContainerPaths(
+        _ paths: [String],
+        progress: ((String, Int, Int) -> Void)?
+    ) -> [AnyHashable: Any] {
+        let known = loadNameCache()
+        var learned = known
         var catalog: [AnyHashable: Any] = [:]
         var named = 0
-        for path in paths where !haIsContainerParent(path) {
+        let usable = paths.filter { !haIsContainerParent($0) }
+        for (index, path) in usable.enumerated() {
             let uuid = URL(fileURLWithPath: path).lastPathComponent
-            let id = readIdentifier(path) ?? uuid
-            if id.contains(".") { named += 1 }
-            catalog[id] = ["container": path]
+            var id = known[path]
+            if id == nil {
+                progress?("Reading names", index + 1, usable.count)
+                id = identifierByGrant(path)
+                if let id { learned[path] = id }
+                if index % 20 == 0 { saveNameCache(learned) }
+            }
+            let key = id ?? uuid
+            if key.contains(".") { named += 1 }
+            catalog[key] = ["container": path]
         }
+        saveNameCache(learned)
         HALog.write("leak apps=\(catalog.count) named=\(named)")
         return catalog
+    }
+
+    /// Grant, read the bundle id, then release the extension so 383 of them are not held.
+    private static func identifierByGrant(_ path: String) -> String? {
+        if let existing = readIdentifier(path) { return existing }
+        var pathC = Array(path.utf8CString)
+        let handle = bad_query(&pathC, true, nil, false)
+        let uuid = URL(fileURLWithPath: path).lastPathComponent
+        HALog.write("name grant \(uuid) handle=\(handle)")
+        defer { if handle >= 0 { bad_query_release(handle) } }
+        guard handle >= 0 else { return nil }
+        return readIdentifier(path) ?? readMetadataIdentifier(path)
+    }
+
+    private static func readMetadataIdentifier(_ path: String) -> String? {
+        let meta = (path as NSString).appendingPathComponent(".com.apple.mobile_container_manager.metadata.plist")
+        guard let dict = NSDictionary(contentsOfFile: meta) as? [String: Any] else { return nil }
+        if let id = dict["MCMMetadataIdentifier"] as? String, id.contains(".") { return id }
+        if let id = dict["MCMApplicationIdentifier"] as? String, id.contains(".") { return id }
+        if let info = dict["MCMMetadataInfo"] as? [String: Any],
+           let id = info["MCMApplicationIdentifier"] as? String, id.contains(".") {
+            return id
+        }
+        return nil
+    }
+
+    private static var nameCacheURL: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("ha-app-names.txt")
+    }
+
+    private static func loadNameCache() -> [String: String] {
+        guard let text = try? String(contentsOf: nameCacheURL, encoding: .utf8) else { return [:] }
+        var map: [String: String] = [:]
+        for line in text.split(whereSeparator: \.isNewline) {
+            let parts = line.split(separator: "\t", maxSplits: 1).map(String.init)
+            if parts.count == 2, parts[1].contains(".") { map[parts[0]] = parts[1] }
+        }
+        return map
+    }
+
+    private static func saveNameCache(_ map: [String: String]) {
+        let text = map.map { "\($0.key)\t\($0.value)" }.joined(separator: "\n")
+        try? text.write(to: nameCacheURL, atomically: true, encoding: .utf8)
     }
 
     /// Bundle id from the container xattr. No sandbox grant: granting here killed the process.
