@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 enum HALog {
@@ -15,6 +16,7 @@ enum HALog {
                 defer { try? handle.close() }
                 _ = try? handle.seekToEnd()
                 try? handle.write(contentsOf: data)
+                try? handle.synchronize()
             }
         } else {
             try? data.write(to: url)
@@ -80,13 +82,23 @@ enum GrantCache {
             HALog.write("grant skip \(path)")
             return -100
         }
-        HALog.write("grant \(path)")
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        let backend = ha_query_backend()
+        HALog.write("grant begin \(path) ios=\(v.majorVersion).\(v.minorVersion).\(v.patchVersion) backend=\(backend)")
+        var info = stat()
+        let rc = lstat(path, &info)
+        let err = rc == 0 ? 0 : errno
+        HALog.write("grant lstat rc=\(rc) errno=\(err) mode=\(rc == 0 ? info.st_mode : 0)")
+        if rc != 0 {
+            HALog.write("grant stop \(path) lstat-failed")
+            return Int64(-254)
+        }
         let isAppGroupPath = path.contains("/Shared/AppGroup")
             || (groupID?.hasPrefix("group.") == true)
-        let major = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
-        let altFlags = isAppGroupPath && major == 26
+        let altFlags = isAppGroupPath && v.majorVersion == 26
+        HALog.write("grant query \(path) alt=\(altFlags) create=false")
         var pathC = Array(path.utf8CString)
-        let handle = bad_query(&pathC, true, nil, altFlags)
+        let handle = bad_query(&pathC, false, nil, altFlags)
         HALog.write("grant result=\(handle) alt=\(altFlags)")
         if handle >= 0 { paths.insert(path) }
         return handle
